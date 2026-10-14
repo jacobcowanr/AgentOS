@@ -1,0 +1,100 @@
+#!/bin/bash
+# agentos-dispatch — route a task through the AgentOS crew catalog and build a Kanban graph
+#
+# Usage:
+#   agentos <task description>
+#   agentos --bots research,writer "<task>"
+#   agentos --dry-run "<task>"        (show the plan, create nothing)
+#   agentos --status                  (kanban board)
+#   agentos --help
+#
+# Routing comes from ~/.hermes/agentos/catalog.yaml (no inline grep rules).
+# Only the bots the task needs are used; librarian is never automatic.
+# Dispatch is a Kanban graph (swarm: workers -> auditor -> synthesizer), executed by the
+# gateway dispatcher. Results append to the vault's Hermes Team/team_memory.md (append-only).
+
+set -euo pipefail
+
+HERMES_ROOT="$HOME/.hermes"
+CATALOG="$HERMES_ROOT/agentos/catalog.yaml"
+ROUTER="$HERMES_ROOT/agentos/route.py"
+TEAM_MEMORY="$HOME/Library/Mobile Documents/com~apple~CloudDocs/Obsidian iCloud/Active Work/Projects/Hermes Team/team_memory.md"
+TASK_DIR="$HERMES_ROOT/team-tasks/tasks"
+mkdir -p "$TASK_DIR"
+
+usage() { sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//'; }
+
+case "${1:-}" in
+    -h|--help) usage; exit 0 ;;
+    --status)  exec hermes kanban list ;;
+esac
+
+# --- Spawn-storm guard (rule 5): a bot/worker session must never dispatch the crew ---
+if [ -n "${AGENTOS_ACTIVE:-}" ] || [ -n "${HERMES_KANBAN_TASK:-}" ] || [[ "${HERMES_HOME:-}" == */profiles/* ]]; then
+    echo "agentos: refusing to dispatch from inside a bot/worker session (spawn-storm guard)" >&2
+    exit 3
+fi
+export AGENTOS_ACTIVE=1
+
+[ $# -gt 0 ] || { usage >&2; exit 1; }
+
+EXPLICIT_BOTS=""; DRY=0
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --bots)    EXPLICIT_BOTS="${2:-}"; shift 2 || true ;;
+        --dry-run) DRY=1; shift ;;
+        *) break ;;
+    esac
+done
+TASK="$*"
+[ -n "$TASK" ] || { echo "agentos: empty task" >&2; exit 1; }
+
+[ -f "$TEAM_MEMORY" ] || echo "agentos: WARNING team_memory.md not found at $TEAM_MEMORY — crew has no shared log" >&2
+
+PLAN=$(python3 -I "$ROUTER" "$CATALOG" "$TASK" "$EXPLICIT_BOTS")
+pj() { python3 -I -c 'import json,sys; d=json.loads(sys.argv[1]); v=d[sys.argv[2]]; print(" ".join(v) if isinstance(v,list) else (v or ""))' "$PLAN" "$1"; }
+SHAPE=$(pj shape); BOTS=$(pj bots); WORKERS=$(pj workers); VERIFIER=$(pj verifier); SYNTH=$(pj synth)
+
+TASK_ID=$(date +"%Y%m%d_%H%M%S")
+echo "Task:     $TASK"
+echo "Shape:    $SHAPE   Bots: $BOTS"
+[ "$SHAPE" = single ] || echo "Workers:  $WORKERS   Verifier: ${VERIFIER:--}   Synthesizer: $SYNTH"
+
+if [ "$DRY" = 1 ]; then echo "(dry run — nothing created)"; exit 0; fi
+
+# One-line title safe for the swarm's PROFILE:TITLE parser
+CLEAN=$(printf '%s' "$TASK" | tr '\n:' '  ' | cut -c1-200)
+NOTE="Shared log (append-only, never a whole-file write): $TEAM_MEMORY — append a dated entry with your result. Task record: $TASK_DIR/$TASK_ID.md"
+printf '# AgentOS Task — %s\n\n**Task ID:** %s\n**Bots:** %s\n**Shape:** %s\n\n## Task\n\n%s\n\n%s\n' \
+    "$(date +"%Y-%m-%d %H:%M:%S")" "$TASK_ID" "$BOTS" "$SHAPE" "$TASK" "$NOTE" > "$TASK_DIR/$TASK_ID.md"
+ln -sfn "$TASK_DIR/$TASK_ID.md" "$HERMES_ROOT/team-tasks/current-task.md"
+
+kid() { python3 -I -c 'import json,sys; print(json.load(sys.stdin)["id"])'; }
+
+case "$SHAPE" in
+  single)
+    BOT=${WORKERS:-$BOTS}; BOT=${BOT%% *}
+    ID=$(hermes kanban create "$CLEAN" --assignee "$BOT" --body "$TASK
+
+$NOTE" --created-by orchestrator --json | kid)
+    echo "Card:     $ID -> $BOT" ;;
+  swarm)
+    ARGS=(); for w in $WORKERS; do ARGS+=(--worker "${w}:${CLEAN} (${w})"); done
+    OUT=$(hermes kanban swarm "$CLEAN" "${ARGS[@]}" --verifier "$VERIFIER" --synthesizer "$SYNTH" \
+          --created-by orchestrator --idempotency-key "agentos-$TASK_ID" --json)
+    ROOT=$(printf '%s' "$OUT" | python3 -I -c 'import json,sys; print(json.load(sys.stdin)["root_id"])')
+    hermes kanban comment "$ROOT" "$NOTE" >/dev/null
+    echo "Swarm root: $ROOT" ;;
+  fanin)
+    PARENTS=(); for w in $WORKERS; do
+        ID=$(hermes kanban create "${CLEAN} (${w})" --assignee "$w" --body "$TASK
+
+$NOTE" --created-by orchestrator --json | kid); PARENTS+=(--parent "$ID"); done
+    ID=$(hermes kanban create "Synthesize: ${CLEAN}" --assignee "$SYNTH" "${PARENTS[@]}" \
+         --body "Combine the parent cards' results into one answer for: $TASK
+
+$NOTE" --created-by orchestrator --json | kid)
+    echo "Synthesis card: $ID" ;;
+esac
+
+echo "Board:    agentos --status   |   live: hermes kanban watch"

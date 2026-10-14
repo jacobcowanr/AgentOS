@@ -1,0 +1,214 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>AgentOS</title>
+<link rel="stylesheet" href="/app.css">
+</head>
+<body>
+<canvas id="gl"></canvas>
+<div class="vignette"></div><div class="scan"></div>
+<div id="labels"></div><div id="tip"></div>
+
+<aside id="side">
+  <div class="brand">
+    <svg viewBox="0 0 40 40" fill="none"><defs><linearGradient id="gem" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#c9b8ff"/><stop offset=".55" stop-color="#8b6cef"/><stop offset="1" stop-color="#483699"/></linearGradient></defs>
+      <path d="M20 2 33 12 29 33 20 38 11 33 7 12Z" fill="url(#gem)" opacity=".9"/><path d="M20 2 24 20 20 38M7 12 24 20 33 12M11 33 24 20 29 33" stroke="#fff" stroke-opacity=".35" stroke-width=".8"/></svg>
+    <div><b>AgentOS</b><small>HERMES · LOCAL</small></div>
+  </div>
+  <div class="navgrp"><h6>COMMAND</h6>
+    <button class="nav on" data-page="home"><i data-i="orb"></i>Home<kbd>1</kbd></button>
+    <button class="nav" data-page="chat"><i data-i="chat"></i>Chat<kbd>2</kbd></button>
+    <button class="nav" data-page="browser"><i data-i="globe"></i>Browser<kbd>3</kbd></button>
+    <button class="nav" data-page="oracle"><i data-i="spark"></i>Hermes Oracle<kbd>4</kbd></button>
+    <button class="nav" data-page="models"><i data-i="cpu"></i>Models<span class="badge" id="newbadge" hidden></span><kbd>5</kbd></button>
+  </div>
+  <div class="navgrp"><h6>CREW</h6>
+    <button class="nav" data-page="team"><i data-i="users"></i>Team Hermes<kbd>6</kbd></button>
+    <button class="nav" data-page="factory"><i data-i="cog"></i>AI Factory<kbd>7</kbd></button>
+  </div>
+  <div class="sidefoot">
+    <button class="modelchip" id="sidemodel" title="Switch model (⌘K)"><i>◆</i><span>Loading…</span></button>
+    <div class="row"><i class="led" id="led-gw"></i><span id="gw">DISPATCHER</span></div>
+    <div class="row"><i class="led idle" id="led-cat"></i><span id="catstat">CATALOG</span></div>
+    <div class="row"><i class="led idle" id="led-mic"></i><span id="micstat">VOICE READY</span></div>
+  </div>
+</aside>
+
+<main id="main">
+  <div id="topbar"><div id="crumb">AgentOS / <b>Home</b></div><div class="topsys"><span id="sysmsg"></span><span id="clock">--:--:--</span></div></div>
+
+  <!-- HOME / VOICE -->
+  <section class="page pass on" id="p-home">
+    <div class="stage">
+      <div class="greet"><h1 id="greet">Hello, <b>Jacob</b>.</h1><p id="gdate"></p></div>
+      <div class="vmid">
+        <div class="vstate">
+          <div id="vlabel">STANDING BY</div>
+          <div id="vheard"></div>
+          <div id="vreply" class="live"></div>
+          <div id="vsrc" class="live"></div>
+        </div>
+      </div>
+      <div class="dock live">
+        <div class="suggest" id="hsug"></div>
+        <div class="vbar glass">
+          <button id="mic" title="Talk (Space)"><i data-i="mic"></i></button>
+          <input id="vtext" placeholder="Speak, or type a command…" autocomplete="off" spellcheck="false">
+          <div class="modes" id="vmodes"><button data-m="direct">CHAT</button><button data-m="web">WEB</button><button data-m="agent">AGENT</button></div>
+          <button class="icon-btn" id="vhands" title="Hands-free conversation"><i data-i="loop"></i></button>
+          <button class="icon-btn" id="vspeak" title="Spoken replies"><i data-i="speaker"></i></button>
+        </div>
+        <div class="hint"><kbd>SPACE</kbd> TALK · <kbd>ESC</kbd> STOP · TRY “OPEN THE ORACLE”, “SEARCH THE WEB FOR …”, “TELL THE CREW TO …”</div>
+      </div>
+    </div>
+    <div class="wid l glass live"><div class="h">Oracle pulse <b>LIVE</b></div><div id="hnews"><div class="empty"><span class="spin"></span></div></div></div>
+    <div class="wid r glass live"><div class="h">Crew <b id="hcrewn"></b></div><div class="crewmini" id="hcrew"></div><div class="stat3" id="hstats"></div></div>
+  </section>
+
+  <!-- CHAT -->
+  <section class="page" id="p-chat">
+    <div class="chat">
+      <div class="sessions glass"><button class="btn pri sm" id="newchat"><i data-i="plus"></i>New chat</button><div class="list scroll" id="slist"></div></div>
+      <div class="convo glass">
+        <div class="convo-head">
+          <button class="modelchip" id="chatmodel" style="width:auto;max-width:420px"></button>
+          <span class="muted mono" id="chatinfo" style="font-size:11px"></span>
+          <button class="icon-btn" id="chatclear" title="Delete this chat" style="margin-left:auto"><i data-i="trash"></i></button>
+        </div>
+        <div id="msgs" class="scroll"></div>
+        <div class="composer">
+          <div class="box">
+            <textarea id="cin" rows="1" placeholder="Message AgentOS…  (Enter to send, Shift+Enter for a new line)"></textarea>
+            <button class="icon-btn" id="cmic" title="Dictate"><i data-i="mic"></i></button>
+            <button class="btn pri sm" id="csend"><i data-i="send"></i>Send</button>
+          </div>
+          <div class="opts">
+            <label class="toggle"><input type="checkbox" id="cweb"><i></i>Web search</label>
+            <label class="toggle"><input type="checkbox" id="cspeak"><i></i>Speak replies</label>
+            <span style="margin-left:auto" class="mono" id="cstat"></span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- BROWSER -->
+  <section class="page" id="p-browser">
+    <div class="bro" id="bro">
+      <div class="bro-main glass">
+        <div class="bro-bar">
+          <button class="icon-btn" id="bback" title="Back"><i data-i="back"></i></button>
+          <button class="icon-btn" id="bfwd" title="Forward"><i data-i="fwd"></i></button>
+          <button class="icon-btn" id="breload" title="Reload"><i data-i="reload"></i></button>
+          <input class="input" id="baddr" placeholder="Search the web or enter a URL" autocomplete="off" spellcheck="false">
+          <button class="btn pri sm" id="bgo">Go</button>
+          <button class="icon-btn" id="bext" title="Open in Chrome"><i data-i="ext"></i></button>
+          <button class="icon-btn on" id="bside" title="Page assistant"><i data-i="spark"></i></button>
+        </div>
+        <div id="bview" class="scroll"></div>
+      </div>
+      <div class="assist glass">
+        <div class="h">Page assistant <b id="actx">NO PAGE</b></div>
+        <div id="alog" class="scroll"></div>
+        <div class="box"><input class="input" id="ain" placeholder="Ask about this page…" autocomplete="off"><button class="btn pri sm" id="asend">Ask</button></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- HERMES ORACLE -->
+  <section class="page" id="p-oracle">
+    <div class="wrap">
+      <div class="hero glass">
+        <div style="position:relative">
+          <div class="eyebrow">Hermes Oracle · Live AI signals</div>
+          <h1>What’s hot in AI<br><em>right now</em></h1>
+          <span class="scanpill"><i class="led idle" id="oled"></i><span id="oscan">NOT SCANNED</span></span>
+          <div class="acts">
+            <button class="btn gold" id="oconsult"><i data-i="spark"></i>Consult the Oracle</button>
+            <button class="btn ghost" id="ohear"><i data-i="speaker"></i>Hear the brief</button>
+            <button class="btn ghost" id="orescan"><i data-i="reload"></i>Rescan</button>
+          </div>
+        </div>
+        <div class="orb" id="oorb"><i class="r1"></i><i class="r2"></i><i class="r3"></i><i class="c"></i></div>
+      </div>
+      <div class="stats" id="ostats"></div>
+      <div class="brief glass" id="obrief"><div class="h">The Oracle speaks <b id="obmodel"></b></div><div class="md" id="obtext"></div></div>
+      <div class="ogrid">
+        <div class="feed glass"><div class="h">Signal feed <b id="ofcount"></b></div><div class="filters" id="ofilt"></div><div id="ofeed"></div></div>
+        <div>
+          <div class="side-card glass"><div class="h">New free models <b>7 DAYS</b></div><div id="onew"></div></div>
+          <div class="side-card glass"><div class="h">Trending on Hugging Face</div><div id="otrend"></div></div>
+          <div class="side-card glass"><div class="h">Sources</div><div id="osrc"></div></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- MODELS -->
+  <section class="page" id="p-models">
+    <div class="wrap">
+      <div class="mhead">
+        <div><div class="eyebrow">Live catalog</div><h1>Models</h1><p id="msub">Loading the catalog…</p></div>
+        <div style="margin-left:auto;display:flex;gap:8px"><button class="btn ghost" id="maddp"><i data-i="plus"></i>Add provider</button><button class="btn pri" id="mrefresh"><i data-i="reload"></i>Refresh catalog</button></div>
+      </div>
+      <div class="provs" id="mprovs"></div>
+      <div class="mfilters">
+        <input class="input" id="mq" placeholder="Search models…" autocomplete="off" spellcheck="false">
+        <label class="toggle"><input type="checkbox" id="mfree" checked><i></i>Free only</label>
+        <label class="toggle"><input type="checkbox" id="mnew"><i></i>New only</label>
+        <label class="toggle"><input type="checkbox" id="mok"><i></i>Tested OK</label>
+        <select class="input" id="msort" style="width:auto;height:36px"><option value="prov">Sort: provider</option><option value="new">Sort: newest</option><option value="ctx">Sort: context</option></select>
+        <span class="muted mono" id="mcount" style="margin-left:auto;font-size:11px"></span>
+      </div>
+      <div class="mtable glass"><div class="mt head"><span>MODEL</span><span>PROVIDER</span><span>CONTEXT</span><span>TIER</span><span></span></div><div id="mrows"></div></div>
+    </div>
+  </section>
+
+  <!-- TEAM HERMES -->
+  <section class="page pass" id="p-team">
+    <div class="hud l glass live"><div class="h">Crew <b id="crewcount"></b></div><div id="crew"></div><div class="detail" id="detail"></div></div>
+    <div class="hud r glass live"><div class="h">Kanban <b id="kb-total"></b></div><div class="cols" id="cols"></div><div class="tasks scroll" id="tasks"></div></div>
+    <div class="hud b glass live"><div class="h">Command <b>CATALOG → KANBAN</b></div>
+      <div class="cmd"><input class="input" id="cmd" placeholder="Dispatch a task to the crew…" autocomplete="off" spellcheck="false"><button class="btn ghost" id="prev">Preview</button><button class="btn pri" id="go">Dispatch</button></div>
+      <div id="cmdout"></div><div class="feedline" id="feed"></div>
+    </div>
+  </section>
+
+  <!-- AI FACTORY -->
+  <section class="page pass" id="p-factory">
+    <div class="hud l glass live"><div class="h">Curator <b id="cur-state"></b></div><div class="big" id="fac-big"></div><div id="fac-kv"></div></div>
+    <div class="hud r glass live"><div class="h">Skill matrix <b id="sk-total"></b></div>
+      <div class="legend"><span><i style="background:#a88bfa"></i>AGENT</span><span><i style="background:#5b7cfa"></i>BUNDLED</span><span><i style="background:#7dd3fc"></i>HUB</span><span><i style="background:#3d3766"></i>DORMANT</span></div>
+      <div class="tasks scroll" id="sk-list"></div></div>
+    <div class="hud b glass live"><div class="h">Forge ledger <b>RECENT SKILL CHANGES</b></div><div class="ledger scroll" id="ledger"></div><div class="feedline" id="oracle"></div></div>
+  </section>
+</main>
+
+<div id="picker" class="glass">
+  <input class="input" id="pq" placeholder="Search free models — name, provider…" autocomplete="off" spellcheck="false">
+  <div class="list scroll" id="plist"></div>
+</div>
+
+<div id="modal"><div class="glass">
+  <h3 id="ap-title">Add a model provider</h3>
+  <p class="muted" style="font-size:13px">Any OpenAI-compatible endpoint. AgentOS pulls its model list into the live catalog.</p>
+  <label>PRESET</label><select class="input" id="ap-preset"></select>
+  <label>NAME</label><input class="input" id="ap-name" autocomplete="off">
+  <label>BASE URL</label><input class="input mono" id="ap-base" placeholder="https://api.example.com/v1" autocomplete="off">
+  <label>API KEY</label><input class="input mono" id="ap-key" type="password" placeholder="Paste a key, or use an env var below" autocomplete="off">
+  <label>…OR ENV VAR IN ~/.hermes/.env</label><input class="input mono" id="ap-env" placeholder="TOGETHER_API_KEY" autocomplete="off">
+  <label class="toggle" style="margin-top:14px"><input type="checkbox" id="ap-free" checked><i></i>Free tier — list under Free</label>
+  <p class="muted" style="font-size:11.5px;margin-top:12px">Keys are saved to ~/.hermes/agentos/data/providers.json (permissions 600) and never sent back to the browser.</p>
+  <div class="row"><button class="btn ghost" id="ap-cancel">Cancel</button><button class="btn pri" id="ap-save">Add &amp; fetch models</button></div>
+</div></div>
+
+<div id="toasts"></div>
+<div id="boot"><div class="in"><div class="bt">Agent<b>OS</b></div><pre id="bootlines"></pre></div></div>
+
+<script src="/vendor/three.min.js"></script>
+<script src="/hud.js"></script>
+<script src="/app.js"></script>
+</body>
+</html>

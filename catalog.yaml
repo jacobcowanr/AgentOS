@@ -1,0 +1,25 @@
+# AgentOS crew catalog — single source of truth for routing.
+# Read by ~/.hermes/agentos/route.py (called from ~/.local/bin/agentos-dispatch).
+# Triggers are matched case-insensitively at a word start (stems work: "audit" hits "auditing").
+bots:
+  orchestrator:
+    role: "Coordinate multi-bot tasks, decompose, synthesize"
+    triggers: [multi-step, coordinate, synthesize, combine, plan]
+    never_alone: false
+  research:
+    role: "Find facts from live sources, cite every claim"
+    triggers: [research, find, search, investigate, compare, what is, how does, source, look up, analyz]
+  writer:
+    role: "Draft finished content from briefs"
+    triggers: [write, draft, email, letter, post, cover letter, newsletter, article, blog, compose]
+  developer:
+    role: "Build and fix tools, scripts, automation, config"
+    triggers: [code, build, fix, script, automat, debug, deploy, setup, configure, install]
+  auditor:
+    role: "Verify claims, code, and briefs before delivery"
+    triggers: [check, verify, review, audit, validate, proofread, test]
+    always_pair_with: [writer, developer]   # anything they produce gets verified
+  librarian:
+    role: "Vault caretaker — organize, sync, clean"
+    triggers: [librarian, organize the vault, organise the vault, clean up the vault, sync the vault]
+    never_auto: true             # ONLY on explicit mention (spawn-storm rule 2)

@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+# agentos — launch the AgentOS shell
+# Usage: agentos [task]   (with a task, dispatches to the crew; without, opens the OS window)
+#   agentos --help | --status | --dry-run "<task>" | --bots a,b "<task>"
+#   agentos --classic   (stock Hermes dashboard)   agentos --stop   (stop AgentOS servers)
+PORT=9120
+case "${1:-}" in
+    --stop) pkill -f "agentos/web/server.py"; hermes dashboard --stop 2>/dev/null; exit 0 ;;
+    --classic) hermes dashboard --no-open >/dev/null 2>&1 & sleep 2; open "http://127.0.0.1:9119"; exit 0 ;;
+    "") ;;
+    *) exec "$HOME/.local/bin/agentos-dispatch" "$@" ;;
+esac
+if ! curl -s -o /dev/null "http://127.0.0.1:$PORT/"; then
+    nohup python3 "$HOME/.hermes/agentos/web/server.py" >/tmp/agentos-web.log 2>&1 &
+    for _ in $(seq 1 20); do curl -s -o /dev/null "http://127.0.0.1:$PORT/" && break; sleep 0.3; done
+fi
+CHROME="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+if [ -x "$CHROME" ]; then
+    "$CHROME" --app="http://127.0.0.1:$PORT/" --window-size=1560,940 >/dev/null 2>&1 &
+else
+    open "http://127.0.0.1:$PORT/"
+fi
+echo "AgentOS running: http://127.0.0.1:$PORT"

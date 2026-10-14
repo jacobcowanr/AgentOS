@@ -1,0 +1,11 @@
+# local state — may contain API keys (providers.json) and per-machine catalog history
+data/
+__pycache__/
+*.pyc
+*.tmp
+.DS_Store
+.env
+.env.*
+.impeccable/
+.claude-flow/
+*.log
