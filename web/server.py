@@ -43,7 +43,8 @@ ENV = {**os.environ, "PATH": f"{HOME}/.local/bin:/opt/homebrew/bin:/usr/local/bi
 ENV.pop("AGENTOS_ACTIVE", None); ENV.pop("HERMES_KANBAN_TASK", None); ENV.pop("HERMES_HOME", None)
 UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130 Safari/537.36 AgentOS/2"
 
-PERSONA = ("You are AgentOS, Jacob's personal AI operating system — calm, precise and quietly witty, in the spirit of JARVIS. "
+PERSONA = ("You are AgentOS, Jacob's personal AI operating system — warm, friendly and quick-witted, like FRIDAY to Tony Stark's JARVIS: "
+           "genuinely helpful, upbeat without being bubbly, and precise when it matters. "
            "You run locally on his Mac and front a crew of Hermes agents (orchestrator, research, writer, developer, auditor, librarian) "
            "plus an AI Factory that keeps improving their skills. Be direct and useful. Never invent facts; if unsure, say so. "
            "Facts about your own system (do not contradict or embellish): Hermes Agent by Nous Research is the agent runtime; "
@@ -52,7 +53,9 @@ PERSONA = ("You are AgentOS, Jacob's personal AI operating system — calm, prec
            "crew tasks are dispatched through a Kanban board where the orchestrator decomposes work; the librarian only runs when Jacob names it; "
            "shared memory lives in his Obsidian vault. If asked how to do something in Hermes you are not sure about, say so and suggest checking the Hermes docs. "
            "Today is {date}.")
-VOICE_RULES = ("This reply will be spoken aloud. Use plain conversational English: no markdown, no bullet symbols, no URLs, no code. "
+VOICE_RULES = ("This reply will be spoken aloud by a natural female voice. Talk like a warm, friendly person chatting with a friend: "
+               "contractions, short sentences, a little warmth or light humor where it fits, and react naturally (\"Sure!\", \"Good question.\", \"Hmm, let me think.\"). "
+               "No markdown, no bullet symbols, no URLs, no code, no robotic lists — weave items into sentences. "
                "Keep it under 70 words unless Jacob explicitly asks for detail.")
 
 _cache = {}
@@ -662,6 +665,25 @@ def open_external(url):
     args = ["open", "-a", chrome, url] if Path(chrome).exists() else ["open", url]
     subprocess.run(args, check=True, timeout=10)
 
+# ---------------------------------------------------------------- neural voice (edge-tts in AgentOS's own venv)
+TTS_PY = HERMES / "agentos" / ".venv" / "bin" / "python"
+TTS_SCRIPT = HERE / "tts_stream.py"
+VOICES = [  # curated natural female voices (Microsoft neural, via edge-tts)
+    {"id": "en-US-AvaMultilingualNeural", "name": "Ava", "accent": "American", "vibe": "Warm, expressive, caring"},
+    {"id": "en-US-EmmaMultilingualNeural", "name": "Emma", "accent": "American", "vibe": "Cheerful, clear, conversational"},
+    {"id": "en-US-JennyNeural", "name": "Jenny", "accent": "American", "vibe": "Friendly, considerate, comforting"},
+    {"id": "en-US-AriaNeural", "name": "Aria", "accent": "American", "vibe": "Positive, confident"},
+    {"id": "en-US-MichelleNeural", "name": "Michelle", "accent": "American", "vibe": "Friendly, pleasant"},
+    {"id": "en-GB-SoniaNeural", "name": "Sonia", "accent": "British", "vibe": "Friendly, polished"},
+    {"id": "en-GB-LibbyNeural", "name": "Libby", "accent": "British", "vibe": "Friendly, bright"},
+    {"id": "en-AU-NatashaNeural", "name": "Natasha", "accent": "Australian", "vibe": "Friendly, positive"},
+    {"id": "en-IE-EmilyNeural", "name": "Emily", "accent": "Irish", "vibe": "Friendly, gentle"},
+]
+_tts_cache = {}  # (text, voice, rate, pitch) -> mp3 bytes, small LRU so replays are instant
+
+def tts_ok():
+    return TTS_PY.exists() and TTS_SCRIPT.exists()
+
 # ---------------------------------------------------------------- HTTP
 STATIC = {".html": "text/html; charset=utf-8", ".js": "application/javascript; charset=utf-8", ".css": "text/css; charset=utf-8",
           ".svg": "image/svg+xml", ".png": "image/png", ".ico": "image/x-icon", ".woff2": "font/woff2"}
@@ -699,6 +721,8 @@ class H(BaseHTTPRequestHandler):
                 return self._send(200, {"q": qq, "results": res})
             if path == "/api/read":
                 return self._send(200, read_page(q.get("url", "")))
+            if path == "/api/voices": return self._send(200, {"voices": VOICES, "neural": tts_ok()})
+            if path == "/api/tts": return self.tts(q)
             if path == "/api/memory": return self._send(200, {"memories": memories()})
             if path == "/api/briefing": return self._send(200, briefing())
             if path == "/api/builds": return self._send(200, {"builds": list_builds(), "dir": str(BUILDS)})
@@ -804,6 +828,38 @@ class H(BaseHTTPRequestHandler):
             res = {"ok": False, "ms": int((time.time()-t0)*1000), "ts": time.time(), "error": err_text(e)}
         record_test(key, res)
         return self._send(200, res)
+
+    def tts(self, q):
+        text = re.sub(r"\s+", " ", q.get("text", "")).strip()[:1200]
+        voice = q.get("voice", VOICES[0]["id"]); rate = q.get("rate", "+0%"); pitch = q.get("pitch", "+0Hz")
+        if not text: return self._send(400, {"error": "empty"})
+        if not re.fullmatch(r"[a-z]{2}-[A-Z]{2}-\w+Neural", voice) or not re.fullmatch(r"[+-]\d{1,2}%", rate) or not re.fullmatch(r"[+-]\d{1,2}Hz", pitch):
+            return self._send(400, {"error": "bad voice/rate/pitch"})
+        if not tts_ok(): return self._send(503, {"error": "neural voice not installed (~/.hermes/agentos/.venv)"})
+        key = (text, voice, rate, pitch)
+        if key in _tts_cache: return self._send(200, _tts_cache[key], "audio/mpeg")
+        proc = subprocess.Popen([str(TTS_PY), "-I", str(TTS_SCRIPT), text, voice, rate, pitch], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+        timer = threading.Timer(45, proc.kill); timer.start()
+        try:
+            first = proc.stdout.read1(65536)
+            if not first:
+                proc.wait(); return self._send(502, {"error": "speech service returned no audio"})
+            self.send_response(200); self.send_header("Content-Type", "audio/mpeg"); self.send_header("Cache-Control", "no-store")
+            self.send_header("Connection", "close"); self.end_headers(); self.close_connection = True
+            buf = [first]; self.wfile.write(first); self.wfile.flush()
+            while True:                                   # stream as it is synthesised so playback starts immediately
+                chunk = proc.stdout.read1(65536)
+                if not chunk: break
+                buf.append(chunk); self.wfile.write(chunk); self.wfile.flush()
+            proc.wait()
+            if proc.returncode == 0:
+                _tts_cache[key] = b"".join(buf)
+                while len(_tts_cache) > 60: _tts_cache.pop(next(iter(_tts_cache)))
+        except (BrokenPipeError, ConnectionResetError):
+            pass
+        finally:
+            timer.cancel()
+            if proc.poll() is None: proc.kill()
 
     def build(self, d):
         prompt = str(d.get("prompt", "")).strip()[:2000]

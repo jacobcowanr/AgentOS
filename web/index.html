@@ -32,6 +32,7 @@
   </div>
   <div class="sidefoot">
     <button class="modelchip" id="sidemodel" title="Switch model (⌘K)"><i>◆</i><span>Loading…</span></button>
+    <button class="modelchip" id="sidevoice" title="Choose AgentOS's voice"><i>♪</i><span>Ava · Natural</span></button>
     <div class="row"><i class="led" id="led-gw"></i><span id="gw">DISPATCHER</span></div>
     <div class="row"><i class="led idle" id="led-cat"></i><span id="catstat">CATALOG</span></div>
     <div class="row"><i class="led idle" id="led-mic"></i><span id="micstat">VOICE READY</span></div>
@@ -219,6 +220,8 @@
   <input class="input" id="pq" placeholder="Search free models — name, provider…" autocomplete="off" spellcheck="false">
   <div class="list scroll" id="plist"></div>
 </div>
+
+<div id="vpicker" class="glass"></div>
 
 <div id="modal"><div class="glass">
   <h3 id="ap-title">Add a model provider</h3>

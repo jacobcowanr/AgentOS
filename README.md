@@ -38,4 +38,6 @@ agentos "task"     # dispatch a task to the crew from the terminal
 
 Keys are read from `~/.hermes/.env`: `NOUS_API_KEY`, `OPENROUTER_API_KEY`, `HF_TOKEN`, `CEREBRAS_API_KEY`, `GOOGLE_API_KEY`, `MISTRAL_API_KEY`, `NVIDIA_API_KEY`, `GROQ_API_KEY` and `EXA_AI_API_KEY`. Keys pasted into the UI are saved to `data/providers.json` with mode 600. That file is gitignored and never sent to the browser.
 
-Voice uses Chrome's Web Speech API, so speech recognition needs Chrome and an internet connection. Replies are spoken with the macOS system voices.
+**Voice output** uses natural Microsoft neural voices through [edge-tts](https://github.com/rany2/edge-tts). It's free and needs no key. It runs in AgentOS's own venv, set up once with `uv venv .venv && VIRTUAL_ENV=.venv uv pip install edge-tts`. Pick a voice in the sidebar (♪): Ava (default), Emma, Jenny, Aria, Michelle, Sonia, Libby, Natasha or Emily. If the service is unreachable, AgentOS falls back to a female macOS system voice. Text you send to be spoken goes to Microsoft's speech service.
+
+Voice input uses Chrome's Web Speech API, so speech recognition needs Chrome and an internet connection. Replies are spoken with the macOS system voices.

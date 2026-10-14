@@ -448,32 +448,80 @@ function listen(){
 $("mic").onclick = listen;
 $("mcore").onclick = ()=>{ if(V.busy || V.speaking){ stopAll(); return; } listen(); };
 
-/* text-to-speech, streamed sentence by sentence */
-const TTS = {buf:""};
+/* text-to-speech — natural neural voice (edge-tts via /api/tts), sentence-streamed with prefetch;
+   falls back to a female system voice if the neural service is unavailable */
+const TTS = {buf:"", q:[], cur:null, sentFirst:false, neural:true};
 let voicesReady = speechSynthesis.getVoices();
 speechSynthesis.onvoiceschanged = ()=>{ voicesReady = speechSynthesis.getVoices(); };
-function pickVoice(){
-  const vs = voicesReady.length ? voicesReady : speechSynthesis.getVoices(), pref = LS.get("voice", "");
-  return vs.find(v=>v.name === pref) || vs.find(v=>/Daniel/.test(v.name) && /en[-_]GB/.test(v.lang)) || vs.find(v=>/Google UK English Male/.test(v.name))
-    || vs.find(v=>/en[-_]GB/.test(v.lang)) || vs.find(v=>/^en/.test(v.lang)) || null;
+const VOICE = { id:LS.get("nvoice", "en-US-AvaMultilingualNeural"), rate:LS.get("nrate", "+0%"), list:[] };
+function pickVoice(){   // fallback only — prefer natural-ish female system voices
+  const vs = voicesReady.length ? voicesReady : speechSynthesis.getVoices();
+  return ["Samantha","Ava","Zoe","Allison","Susan","Karen","Moira","Tessa","Serena","Flo","Google US English","Google UK English Female"]
+    .map(n=>vs.find(v=>v.name.startsWith(n))).find(Boolean) || vs.find(v=>/^en/.test(v.lang) && !/Daniel|Fred|Albert|Ralph|Eddy|Reed|Rocko|Grandpa|Junior/.test(v.name)) || null;
 }
 const speakable = t => t.replace(/```[\s\S]*?```/g, " ").replace(/https?:\/\/\S+/g, "").replace(/\[(\d+)\]/g, "").replace(/[*_#`>|~]/g, "").replace(/\s+/g, " ").trim();
+function ttsMeter(audio){
+  try{
+    const c = V.actx || (V.actx = new AudioContext()); if(c.state === "suspended") c.resume();
+    const src = c.createMediaElementSource(audio), an = c.createAnalyser(); an.fftSize = 512;
+    src.connect(an); an.connect(c.destination);
+    const buf = new Uint8Array(an.fftSize);
+    const loop = ()=>{ if(audio.paused || audio.ended) return; an.getByteTimeDomainData(buf); let s = 0; for(const v of buf){ const x = (v-128)/128; s += x*x; } HUD.setLevel(Math.min(1, Math.sqrt(s/buf.length)*4.5)); requestAnimationFrame(loop); };
+    audio.addEventListener("play", loop);
+  }catch{}
+}
+function systemSpeak(text){
+  const u = new SpeechSynthesisUtterance(text); const v = pickVoice(); if(v) u.voice = v;
+  u.rate = 1.0; u.pitch = 1.05;
+  u.onstart = ()=>{ V.speaking = true; setVState("speak", "SPEAKING"); };
+  u.onboundary = ()=>HUD.setLevel(.7);
+  u.onend = u.onerror = ()=>setTimeout(()=>{ if(!speechSynthesis.speaking && !speechSynthesis.pending && !TTS.cur && !TTS.q.length){ V.speaking = false; speechDone(); } }, 60);
+  speechSynthesis.speak(u);
+}
+function playNext(){
+  if(TTS.cur) return;
+  const item = TTS.q.shift();
+  if(!item){ if(!speechSynthesis.speaking && !speechSynthesis.pending){ V.speaking = false; speechDone(); } return; }
+  if(item.system){ V.speaking = true; systemSpeak(item.text); return playNext(); }   // the system synth keeps its own queue
+  TTS.cur = item.audio;
+  V.speaking = true; setVState("speak", "SPEAKING");
+  const done = ()=>{ if(TTS.cur !== item.audio) return; TTS.cur = null; playNext(); };
+  item.audio.onended = done;
+  item.audio.onerror = ()=>{
+    if(TTS.cur !== item.audio) return;
+    TTS.cur = null; TTS.neural = false;          // neural service unreachable: finish this reply with the system voice
+    TTS.q = [{system:true, text:item.text}, ...TTS.q.map(i=>{ if(i.audio){ i.audio.src = ""; return {system:true, text:i.text}; } return i; })];
+    toast("Neural voice unavailable", "Using the system voice for now.", "bad"); playNext();
+  };
+  item.audio.play().catch(()=>{ item.audio.onerror(); });
+}
 function speakChunk(text){
   text = speakable(text); if(!text) return;
-  const u = new SpeechSynthesisUtterance(text);
-  const v = pickVoice(); if(v) u.voice = v;
-  u.rate = 1.04; u.pitch = .95;
-  u.onstart = ()=>{ V.speaking = true; setVState("speak", "SPEAKING"); };
-  u.onboundary = ()=>HUD.setLevel(.75);
-  u.onend = u.onerror = ()=>{ setTimeout(()=>{ if(!speechSynthesis.speaking && !speechSynthesis.pending){ V.speaking = false; speechDone(); } }, 60); };
-  speechSynthesis.speak(u);
+  if(!TTS.neural || VOICE.id === "system"){ TTS.q.push({system:true, text}); playNext(); return; }
+  const a = new Audio(`/api/tts?voice=${encodeURIComponent(VOICE.id)}&rate=${encodeURIComponent(VOICE.rate)}&text=${encodeURIComponent(text)}`);
+  a.preload = "auto"; ttsMeter(a);           // starts fetching now, so the next sentence is ready when this one ends
+  TTS.q.push({audio:a, text}); playNext();
 }
 function feedSpeech(delta){
   TTS.buf += delta; let m;
-  while((m = TTS.buf.match(/^[\s\S]*?(?:[.!?…](?=\s)|\n)/))){ const s = m[0]; TTS.buf = TTS.buf.slice(s.length); if(s.trim().length > 1) speakChunk(s); }
+  // first sentence goes out immediately (fast first word); after that, group ~2 sentences per request for natural flow
+  while((m = TTS.buf.match(/^[\s\S]*?(?:[.!?…](?=\s)|\n)/))){
+    if(TTS.sentFirst && m[0].length < 120){
+      const m2 = TTS.buf.slice(m[0].length).match(/^[\s\S]*?(?:[.!?…](?=\s)|\n)/);
+      if(!m2) break;                               // wait for the next sentence to pair with this one
+      const s = m[0] + m2[0]; TTS.buf = TTS.buf.slice(s.length); if(s.trim().length > 1) speakChunk(s); continue;
+    }
+    const s = m[0]; TTS.buf = TTS.buf.slice(s.length); if(s.trim().length > 1){ speakChunk(s); TTS.sentFirst = true; }
+  }
 }
-function flushSpeech(){ if(TTS.buf.trim()) speakChunk(TTS.buf); TTS.buf = ""; }
-function stopSpeaking(){ TTS.buf = ""; speechSynthesis.cancel(); V.speaking = false; }
+function flushSpeech(){ if(TTS.buf.trim()) speakChunk(TTS.buf); TTS.buf = ""; TTS.sentFirst = false; }
+function stopSpeaking(){
+  TTS.buf = ""; TTS.sentFirst = false;
+  TTS.q.forEach(i=>{ if(i.audio){ i.audio.pause(); i.audio.src = ""; } }); TTS.q = [];
+  if(TTS.cur){ TTS.cur.pause(); TTS.cur.src = ""; TTS.cur = null; }
+  speechSynthesis.cancel(); V.speaking = false;
+}
+const ttsIdle = ()=>!TTS.cur && !TTS.q.length && !speechSynthesis.speaking && !speechSynthesis.pending;
 function speechDone(){
   if(V.busy || V.speaking) return;
   setVState("idle", V.hands ? "HANDS-FREE" : V.wake ? "SAY “HEY AGENTOS”" : "STANDING BY");
@@ -556,7 +604,7 @@ async function converse(text, {web=false, agent=false, prompt=null} = {}){
   V.history.push({role:"user", content:prompt || text});
   V.history = V.history.slice(-20); const idx = V.history.length - 1;
   const model = agent ? {provider:"hermes", id:"agent"} : active;
-  V.busy = true; setVState("think", agent ? "HERMES AGENT WORKING" : web ? "SEARCHING THE WEB" : "THINKING");
+  V.busy = true; TTS.neural = true; setVState("think", agent ? "HERMES AGENT WORKING" : web ? "SEARCHING THE WEB" : "THINKING");
   $("vreply").textContent = ""; let out = "";
   const ac = V.abort = new AbortController();
   try{
@@ -574,7 +622,7 @@ async function converse(text, {web=false, agent=false, prompt=null} = {}){
   }
   if(V.abort === ac) V.abort = null;
   V.busy = false;
-  if(V.speak){ flushSpeech(); if(!speechSynthesis.speaking && !speechSynthesis.pending) speechDone(); } else speechDone();
+  if(V.speak){ flushSpeech(); if(ttsIdle()) speechDone(); } else speechDone();
 }
 async function dispatchVoice(task){
   setVState("think", "DISPATCHING");
@@ -887,7 +935,7 @@ O.consult = async spoken=>{
   $("oorb").classList.remove("busy"); O.consulting = false;
 };
 $("oconsult").onclick = ()=>O.consult(false);
-$("ohear").onclick = ()=>{ if(O.brief){ stopSpeaking(); O.brief.split(/(?<=[.!?])\s+|\n+/).forEach(speakChunk); } else { go("home"); O.consult(true); } };
+$("ohear").onclick = ()=>{ if(O.brief){ stopSpeaking(); (speakable(O.brief).match(/[^.!?]+[.!?]+(\s|$)|[^.!?]+$/g) || []).reduce((acc, s)=>{ if(acc.length && acc[acc.length-1].length + s.length < 260) acc[acc.length-1] += s; else acc.push(s); return acc; }, []).forEach(speakChunk); } else { go("home"); O.consult(true); } };
 $("orescan").onclick = ()=>loadNews(true);
 function renderHomeNews(){
   if(!O.data) return;
@@ -1132,3 +1180,43 @@ function draftFrom(item){
 }
 
 if(V.wake) setTimeout(wakeStart, 1500);
+
+
+/* =====================================================================================
+   VOICE PICKER — natural female neural voices
+   ===================================================================================== */
+const SPEEDS = [["-8%","Relaxed"],["+0%","Natural"],["+8%","Brisk"]];
+async function loadVoices(){
+  try{ const d = await api.get("/api/voices"); VOICE.list = d.voices; if(!d.neural) toast("Neural voice not installed", "Using the system voice.", "bad"); }catch{}
+  renderVoiceChip();
+}
+function voiceName(){ if(VOICE.id === "system") return "System voice"; const v = VOICE.list.find(x=>x.id === VOICE.id); return v ? v.name : VOICE.id.split("-")[2].replace(/(Multilingual)?Neural/, ""); }
+function renderVoiceChip(){ $("sidevoice").innerHTML = `<i>♪</i><span>${esc(voiceName())} · ${esc((SPEEDS.find(s=>s[0]===VOICE.rate)||SPEEDS[1])[1])}</span>`; }
+function previewVoice(id){
+  stopSpeaking();
+  const v = VOICE.list.find(x=>x.id === id), name = v ? v.name : "your system voice";
+  const line = `Hi Jacob, I'm ${name}. I'll be your voice for AgentOS. Want me to run your morning briefing?`;
+  if(id === "system"){ systemSpeak(line); return; }
+  const a = new Audio(`/api/tts?voice=${encodeURIComponent(id)}&rate=${encodeURIComponent(VOICE.rate)}&text=${encodeURIComponent(line)}`);
+  ttsMeter(a); TTS.cur = a; a.onended = a.onerror = ()=>{ if(TTS.cur === a) TTS.cur = null; };
+  a.play().catch(()=>toast("Couldn't play the preview", "", "bad"));
+}
+function openVoicePicker(anchor){
+  const p = $("vpicker");
+  p.innerHTML = `<div class="h">Voice <b>NATURAL · FREE</b></div>
+    <div class="list scroll">${[...VOICE.list, {id:"system", name:"System voice", accent:"macOS", vibe:"Offline fallback, more robotic"}].map(v=>`
+      <div class="mrow ${v.id===VOICE.id?"on":""}" data-v="${esc(v.id)}"><b>${esc(v.name)} <span class="muted" style="font-weight:400">· ${esc(v.accent)}</span></b><small>${esc(v.vibe)}</small>
+      <span class="tags"><button class="icon-btn" data-prev="${esc(v.id)}" title="Preview" style="width:30px;height:30px">${icon("speaker")}</button></span></div>`).join("")}</div>
+    <div class="h" style="margin:12px 0 8px">Pace</div>
+    <div class="modes" style="display:inline-flex">${SPEEDS.map(([r,l])=>`<button data-r="${r}" class="${VOICE.rate===r?"on":""}">${l.toUpperCase()}</button>`).join("")}</div>`;
+  p.classList.add("on");
+  const r = anchor.getBoundingClientRect();
+  p.style.left = Math.min(innerWidth - p.offsetWidth - 10, r.left) + "px";
+  p.style.top = Math.max(10, r.top - p.offsetHeight - 8) + "px";
+  $$("#vpicker [data-prev]").forEach(b=>b.onclick = e=>{ e.stopPropagation(); previewVoice(b.dataset.prev); });
+  $$("#vpicker .mrow").forEach(row=>row.onclick = ()=>{ VOICE.id = row.dataset.v; LS.set("nvoice", VOICE.id); TTS.neural = true; renderVoiceChip(); openVoicePicker(anchor); previewVoice(VOICE.id); });
+  $$("#vpicker [data-r]").forEach(b=>b.onclick = e=>{ e.stopPropagation(); VOICE.rate = b.dataset.r; LS.set("nrate", VOICE.rate); renderVoiceChip(); openVoicePicker(anchor); previewVoice(VOICE.id); });
+}
+$("sidevoice").onclick = e=>{ const p = $("vpicker"); if(p.classList.contains("on")){ p.classList.remove("on"); return; } openVoicePicker(e.currentTarget); };
+document.addEventListener("mousedown", e=>{ if($("vpicker").classList.contains("on") && !e.target.closest("#vpicker") && !e.target.closest("#sidevoice")) $("vpicker").classList.remove("on"); });
+loadVoices();

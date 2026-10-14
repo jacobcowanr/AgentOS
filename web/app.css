@@ -196,9 +196,9 @@ body.dimbg .vignette{background:radial-gradient(ellipse 80% 70% at 60% 40%,rgba(
 .welcome .suggest{margin-top:18px}
 
 /* ---------- model picker popover ---------- */
-#picker{position:fixed;z-index:50;width:440px;max-height:min(560px,80vh);display:none;flex-direction:column;padding:12px;background:rgba(10,10,26,.96)}
-#picker.on{display:flex}
-#picker .list{overflow:auto;margin-top:10px;display:grid;gap:2px}
+#picker,#vpicker{position:fixed;z-index:50;width:440px;max-height:min(560px,80vh);display:none;flex-direction:column;padding:12px;background:rgba(10,10,26,.96)}
+#picker.on,#vpicker.on{display:flex}
+#picker .list,#vpicker .list{overflow:auto;margin-top:10px;display:grid;gap:2px}
 #picker .grp{font:600 9px var(--mono);letter-spacing:.24em;color:var(--faint);padding:10px 8px 4px}
 .mrow{display:grid;grid-template-columns:1fr auto;gap:2px 10px;padding:8px 10px;border-radius:9px;cursor:pointer}
 .mrow:hover{background:rgba(var(--accent-rgb),.12)}
@@ -424,3 +424,6 @@ body.dimbg .vignette{background:radial-gradient(ellipse 80% 70% at 60% 40%,rgba(
 #toasts{bottom:104px}
 .news .draft{grid-column:2;justify-self:start;margin-top:4px;opacity:0;transition:.15s}
 .news:hover .draft{opacity:1}
+
+#vpicker{width:380px}
+#vpicker .mrow{align-items:center}
