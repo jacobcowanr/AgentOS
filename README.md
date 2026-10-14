@@ -18,6 +18,15 @@ Runs on `127.0.0.1:9120` only. Python standard library plus PyYAML on the server
 | **Team Hermes** | 3D crew constellation, Kanban board, and catalog-routed dispatch (`bin/agentos-dispatch`) |
 | **AI Factory** | Curator state, skill matrix galaxy and forge ledger |
 
+**Files:** drag and drop anywhere in the window, paste a screenshot with ⌘V, or use 📎 on Home or Chat.
+- **Images and screenshots** go to a vision model automatically when the selected model can't see. Default is Cerebras Qwen 3.8 (about 0.5s); Gemini Flash-Lite and Llama 3.2 Vision are backups.
+- **PDFs** have their text extracted. Scanned PDFs are rendered to page images for the vision model.
+- **Text and code files** are read as-is.
+- Files stay in the conversation for follow-up questions. Uploads live in `data/uploads/` (gitignored) and are pruned after 30 days.
+- If the chosen model is busy or down before it starts answering, AgentOS falls back to another free model.
+
+**Portfolio (NotebookLM):** questions about you use a synced profile of your "Jacob's Career Portfolio" notebook. Say "ask my portfolio …" for a live lookup. AgentOS talks to `notebooklm-mcp` directly and never runs its auth setup.
+
 **Apollo-style voice:**
 - **Wake word**, off by default: say "Hey AgentOS" (or "Hey Jarvis") and then your request.
 - **Daily or weekly briefing:** say "brief me", "good morning" or press ☀. It covers the crew board, the AI Factory, top headlines and new free models.

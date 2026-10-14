@@ -56,8 +56,10 @@
       </div>
       <div class="dock live">
         <div class="suggest" id="hsug"></div>
+        <div class="tray" id="vtray"></div>
         <div class="vbar glass">
           <button id="mic" title="Talk (Space)"><i data-i="mic"></i></button>
+          <button class="icon-btn" id="vclip" title="Attach a screenshot, PDF or file (or drag it anywhere / ⌘V)"><i data-i="clip"></i></button>
           <input id="vtext" placeholder="Speak, or type a command…" autocomplete="off" spellcheck="false">
           <div class="modes" id="vmodes"><button data-m="auto" title="Searches the web automatically when a question needs live info">AUTO</button><button data-m="web">WEB</button><button data-m="agent">AGENT</button></div>
           <button class="icon-btn" id="vbrief" title="Daily briefing"><i data-i="sun"></i></button>
@@ -84,7 +86,9 @@
         </div>
         <div id="msgs" class="scroll"></div>
         <div class="composer">
+          <div class="tray" id="ctray" style="max-width:860px;margin:0 auto 8px"></div>
           <div class="box">
+            <button class="icon-btn" id="cclip" title="Attach a screenshot, PDF or file (or drag it anywhere / ⌘V)"><i data-i="clip"></i></button>
             <textarea id="cin" rows="1" placeholder="Message AgentOS…  (Enter to send, Shift+Enter for a new line)"></textarea>
             <button class="icon-btn" id="cmic" title="Dictate"><i data-i="mic"></i></button>
             <button class="btn pri sm" id="csend"><i data-i="send"></i>Send</button>
@@ -242,6 +246,8 @@
   <button id="mcore" title="Talk to AgentOS"><i class="r1"></i><i class="r2"></i><i class="c"></i></button>
 </div>
 <div id="toasts"></div>
+<input type="file" id="fileIn" multiple hidden accept="image/*,.heic,.pdf,.txt,.md,.csv,.tsv,.json,.yaml,.yml,.log,.py,.js,.ts,.html,.css,.xml,.sh,.swift,.sql,.toml,.ini,.conf">
+<div id="dropzone"><div class="dz glass"><div class="dzi"></div><b>Drop to attach</b><span>Screenshots, images, PDFs or text files. AgentOS will read them.</span></div></div>
 <div id="boot"><div class="in"><div class="bt">Agent<b>OS</b></div><pre id="bootlines"></pre></div></div>
 
 <script src="/vendor/three.min.js"></script>

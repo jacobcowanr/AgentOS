@@ -427,3 +427,23 @@ body.dimbg .vignette{background:radial-gradient(ellipse 80% 70% at 60% 40%,rgba(
 
 #vpicker{width:380px}
 #vpicker .mrow{align-items:center}
+
+/* ---------- attachments ---------- */
+.tray{display:flex;gap:8px;flex-wrap:wrap;justify-content:center}
+.tray:empty{display:none}
+.att{display:flex;align-items:center;gap:8px;padding:5px 8px 5px 5px;border-radius:10px;border:1px solid var(--line2);background:rgba(12,12,30,.85);backdrop-filter:blur(10px);font-size:12px;max-width:260px}
+.att img,.att .fi{width:34px;height:34px;border-radius:7px;object-fit:cover;flex:none;background:rgba(var(--accent-rgb),.18);display:grid;place-items:center;font:700 9px var(--mono);color:var(--accent2)}
+.att span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.att small{display:block;font:10px var(--mono);color:var(--dim)}
+.att button{border:0;background:none;color:var(--faint);cursor:pointer;font-size:13px;margin-left:2px}
+.att button:hover{color:var(--warn)}
+.msg .atts{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+.msg .atts .att{background:rgba(var(--accent-rgb),.08)}
+.msg .atts img{width:120px;height:80px}
+#dropzone{position:fixed;inset:0;z-index:90;display:none;place-items:center;background:rgba(4,3,10,.55);backdrop-filter:blur(3px)}
+#dropzone.on{display:grid}
+#dropzone .dz{padding:40px 54px;text-align:center;border:2px dashed var(--accent);display:grid;gap:8px;justify-items:center;box-shadow:0 0 60px rgba(var(--accent-rgb),.35)}
+#dropzone .dzi{width:62px;height:62px;border-radius:50%;background:radial-gradient(circle at 40% 35%,#fff,#d8ccff 20%,var(--accent) 55%,transparent 72%);box-shadow:0 0 30px rgba(var(--accent-rgb),.9);animation:breathe 1.6s ease-in-out infinite}
+#dropzone b{font-size:20px;color:#fff}
+#dropzone span{color:var(--dim);font-size:13px}
+.composer .box .icon-btn{flex:none}

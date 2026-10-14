@@ -47,7 +47,8 @@ const ICON = {
   back:'<path d="M15 18l-6-6 6-6"/>', fwd:'<path d="M9 18l6-6-6-6"/>',
   reload:'<path d="M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7"/>',
   ext:'<path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/>',
-  send:'<path d="M4 12l16-8-6 16-2.5-6.5z"/>', plus:'<path d="M12 5v14M5 12h14"/>',
+  send:'<path d="M4 12l16-8-6 16-2.5-6.5z"/>',
+  clip:'<path d="M21 11.5l-8.6 8.6a5.5 5.5 0 0 1-7.8-7.8l9.2-9.2a3.7 3.7 0 0 1 5.2 5.2l-9.2 9.2a1.8 1.8 0 0 1-2.6-2.6l8.5-8.5"/>', plus:'<path d="M12 5v14M5 12h14"/>',
   stop:'<rect x="6" y="6" width="12" height="12" rx="2"/>',
   code:'<path d="M8 8l-5 4 5 4M16 8l5 4-5 4M14 4l-4 16"/>',
   brain:'<path d="M9 4a3 3 0 0 0-3 3 3 3 0 0 0-2 5 3 3 0 0 0 2 5 3 3 0 0 0 3 3 3 3 0 0 0 3-3V7a3 3 0 0 0-3-3zM15 4a3 3 0 0 1 3 3 3 3 0 0 1 2 5 3 3 0 0 1-2 5 3 3 0 0 1-3 3 3 3 0 0 1-3-3"/>',
@@ -611,7 +612,8 @@ const NO_LIVE = /let me search that|(?:don'?t|do not) have (?:any )?(?:live|real
 async function converse(text, {web=false, agent=false, prompt=null, retried=false, portfolio=null} = {}){
   if(V.abort) V.abort.abort();
   stopSpeaking();
-  V.history.push({role:"user", content:prompt || text});
+  const atts = ATT.take("home");
+  V.history.push({role:"user", content:prompt || text, ...(atts.length ? {attachments:atts.map(x=>x.id)} : {})});
   V.history = V.history.slice(-20); const idx = V.history.length - 1;
   const model = agent ? {provider:"hermes", id:"agent"} : active;
   V.busy = true; TTS.neural = true; setVState("think", agent ? "HERMES AGENT WORKING" : web === true ? "SEARCHING THE WEB" : "THINKING");
@@ -676,7 +678,7 @@ const VOICE_CMDS = ["open the oracle", "open the browser", "open the model catal
   "tell the crew to build ", "switch model to ", "hands-free on", "hands-free off", "refresh the catalog",
   "give me my daily briefing", "give me my weekly briefing", "build me a ", "build me a snake game", "remember that ", "what do you remember about ",
   "forget ", "play  on youtube", "open github in chrome", "open youtube in chrome",
-  "ask my portfolio ", "ask my portfolio what projects show my SQL skills", "write a cover letter for an IT operations analyst role", "what are my strongest skills?"];
+  "ask my portfolio ", "ask my portfolio what projects show my SQL skills", "what's wrong in this screenshot?", "summarize this PDF", "write a cover letter for an IT operations analyst role", "what are my strongest skills?"];
 const vGhost = new Ghost($("vtext"), {kind:"voice", context:()=>V.history.slice(-6),
   local:v=>{
     const lv = v.toLowerCase();
@@ -686,7 +688,12 @@ const vGhost = new Ghost($("vtext"), {kind:"voice", context:()=>V.history.slice(
     }
     return [...HIST.get("voice"), ...VOICE_CMDS];
   }});
-$("vtext").addEventListener("keydown", e=>{ if(e.key === "Enter" && $("vtext").value.trim()){ const t = $("vtext").value; $("vtext").value = ""; vGhost.clear(); handleUtterance(t); } });
+$("vtext").addEventListener("keydown", e=>{
+  if(e.key !== "Enter") return;
+  const t = $("vtext").value.trim();
+  if(!t && ATT.home.length){ e.preventDefault(); converse("Take a look at this and tell me what matters.", {web:"auto"}); return; }
+  if(t){ $("vtext").value = ""; vGhost.clear(); handleUtterance(t); }
+});
 const HOME_SUG = ["Give me my daily briefing", "What's new in AI today?", "Build me a snake game", "Search the web for the best free coding models"];
 $("hsug").innerHTML = HOME_SUG.map(s=>`<button class="chip">${esc(s)}</button>`).join("");
 $$("#hsug .chip").forEach(c=>c.onclick = ()=>handleUtterance(c.textContent));
@@ -736,7 +743,8 @@ const CHAT_SUG = ["What can you do?", "Compare the best free models for coding",
 function msgHTML(m, i){
   const who = m.role === "user" ? "YOU" : "AGENTOS";
   const meta = m.role === "assistant" && m.model ? `<i>${esc(m.model)}${m.ms?` · ${(m.ms/1000).toFixed(1)}s`:""}</i>` : "";
-  const body = m.role === "user" ? `<p>${esc(m.content).replace(/\n/g,"<br>")}</p>` : (m.content ? md(m.content) : "");
+  const body = (m.role === "user" ? `<p>${esc(m.content).replace(/\n/g,"<br>")}</p>` : (m.content ? md(m.content) : ""))
+    + (m.attachments && m.attachments.length ? `<div class="atts">${m.attachments.map(attChip).join("")}</div>` : "");
   const st = m.pending ? `<div class="status"><span class="spin"></span>${esc(m.status || "Thinking…")}</div>` : "";
   const err = m.error ? `<div class="err">⚠ ${esc(m.error)}</div>` : "";
   const src = m.sources && m.sources.length ? `<div class="srcs">${m.sources.map((s,j)=>`<a data-url="${esc(s.url)}" href="${esc(s.url)}">[${j+1}] ${esc(s.title || host(s.url))}</a>`).join("")}</div>` : "";
@@ -759,19 +767,22 @@ function updateLast(){
 }
 async function sendChat(){
   if(C.abort){ C.abort.abort(); return; }
-  const text = $("cin").value.trim(); if(!text) return;
+  let text = $("cin").value.trim();
+  if(!text && ATT.chat.length) text = "Take a look at this and tell me what matters.";
+  if(!text) return;
   if(!session()) newChat();
   const s = session(); HIST.add("chat", text);
   $("cin").value = ""; autoSize(); cGhost.clear();
   if(s.title === "New chat") s.title = text.slice(0, 48);
-  s.msgs.push({role:"user", content:text});
+  const atts = ATT.take("chat");
+  s.msgs.push({role:"user", content:text, ...(atts.length ? {attachments:atts.map(x=>({id:x.id, name:x.name, kind:x.kind, pages:x.pages, thumb:x.thumb}))} : {})});
   const a = {role:"assistant", content:"", pending:true, model:shortName(active), status:"Thinking…"}; s.msgs.push(a);
   renderSessions(); renderMsgs(); save();
   const ac = C.abort = new AbortController(); $("csend").innerHTML = icon("stop") + "Stop";
   const speak = $("cspeak").checked; let thinking = 0;
   try{
     await streamChat({provider:active.provider, model:active.id, web:$("cweb").checked ? true : "auto", voice:false,
-      messages:s.msgs.filter(m=>!m.pending && !m.error).map(m=>({role:m.role, content:m.content}))}, ev=>{
+      messages:s.msgs.filter(m=>!m.pending && !m.error).map(m=>({role:m.role, content:m.content, ...(m.attachments ? {attachments:m.attachments.map(x=>x.id)} : {})}))}, ev=>{
       if(ev.type === "delta"){ a.content += ev.text; a.status = ""; if(speak) feedSpeech(ev.text); }
       else if(ev.type === "thinking"){ thinking = ev.n; a.status = `Reasoning… ${thinking.toLocaleString()} chars`; }
       else if(ev.type === "status") a.status = ev.text;
@@ -779,6 +790,7 @@ async function sendChat(){
       else if(ev.type === "route" && ev.search) a.status = `Searching the web for “${ev.query}”…`;
       else if(ev.type === "route" && ev.portfolio && ev.portfolio !== "none") a.status = ev.portfolio === "deep" ? "Checking your portfolio in NotebookLM…" : "Using your portfolio…";
       else if(ev.type === "done") a.ms = ev.ms;
+      else if(ev.type === "model") a.model = (ev.model||"").split("/").pop() + (ev.reason === "vision" ? " (vision)" : " (fallback)");
       else if(ev.type === "error") throw new Error(ev.error);
       updateLast();
     }, ac.signal);
@@ -1291,3 +1303,54 @@ function renderPortfolio(){
   $("pfask").onclick = ask; $("pfq").addEventListener("keydown", e=>{ if(e.key === "Enter") ask(); });
   new Ghost($("pfq"), {kind:"chat", remote:false, local:()=>[...HIST.get("portfolio"), "which projects show my SQL skills?", "summarize my work experience in 3 bullets", "what makes me a strong IT operations candidate?"]});
 }
+
+
+/* =====================================================================================
+   ATTACHMENTS — drag & drop anywhere, ⌘V paste, 📎 button. Screenshots → vision model; PDFs/text → read.
+   ===================================================================================== */
+const ATT = {home:[], chat:[],
+  take(where){ const l = ATT[where].filter(x=>x.id); ATT[where] = []; renderTray(where); return l; } };
+function attChip(x, removable){
+  const label = x.kind === "pdf" ? `PDF · ${x.pages||"?"} pg` : x.kind === "image" ? "Image" : x.kind === "text" ? "Text" : "";
+  const thumb = x.uploading ? `<div class="fi"><span class="spin"></span></div>`
+    : x.thumb ? `<img src="/api/upload/${esc(x.id)}/thumb" alt="">` : `<div class="fi">${esc((x.name.split(".").pop()||"").slice(0,4).toUpperCase())}</div>`;
+  return `<div class="att">${thumb}<div style="min-width:0"><span>${esc(x.name)}</span><small>${x.uploading ? "Uploading…" : x.error ? `<span class="err">${esc(x.error)}</span>` : label}</small></div>${removable ? `<button data-rm="${esc(x.key)}" title="Remove">✕</button>` : ""}</div>`;
+}
+function renderTray(where){
+  const el = $(where === "chat" ? "ctray" : "vtray");
+  el.innerHTML = ATT[where].map(x=>attChip(x, true)).join("");
+  el.querySelectorAll("[data-rm]").forEach(b=>b.onclick = ()=>{ ATT[where] = ATT[where].filter(x=>x.key !== b.dataset.rm); renderTray(where); });
+}
+async function attachFiles(files){
+  files = [...files].filter(f=>f && f.size); if(!files.length) return;
+  const where = page === "chat" ? "chat" : "home";
+  if(where === "home" && page !== "home") go("home");
+  for(const f of files){
+    const name = f.name && f.name !== "image.png" ? f.name : `Screenshot ${new Date().toLocaleTimeString([], {hour:"2-digit", minute:"2-digit"})}.png`;
+    const item = {key:Math.random().toString(36).slice(2), name, uploading:true};
+    ATT[where].push(item); renderTray(where);
+    try{
+      if(f.size > 25*1024*1024) throw new Error("over 25 MB");
+      const r = await fetch("/api/upload", {method:"POST", headers:{"X-AgentOS":"1", "X-Filename":encodeURIComponent(name), "Content-Type":"application/octet-stream"}, body:f});
+      const j = await r.json(); if(!r.ok || j.error) throw new Error(j.error || r.statusText);
+      Object.assign(item, {id:j.id, kind:j.kind, pages:j.pages, thumb:!!(j.images && j.images.length), uploading:false});
+    }catch(e){
+      ATT[where] = ATT[where].filter(x=>x !== item); toast(`Couldn't attach ${name}`, e.message, "bad");
+    }
+    renderTray(where);
+  }
+  if(where === "home"){ $("vlabel").textContent = "ATTACHED — ASK ME ABOUT IT"; $("vtext").focus(); }
+  else $("cin").focus();
+}
+$("vclip").onclick = $("cclip").onclick = ()=>$("fileIn").click();
+$("fileIn").onchange = ()=>{ attachFiles($("fileIn").files); $("fileIn").value = ""; };
+let dragDepth = 0;
+const hasFiles = e=>[...(e.dataTransfer?.types || [])].includes("Files");
+addEventListener("dragenter", e=>{ if(!hasFiles(e)) return; e.preventDefault(); dragDepth++; $("dropzone").classList.add("on"); });
+addEventListener("dragover", e=>{ if(hasFiles(e)) e.preventDefault(); });
+addEventListener("dragleave", e=>{ if(!hasFiles(e)) return; if(--dragDepth <= 0){ dragDepth = 0; $("dropzone").classList.remove("on"); } });
+addEventListener("drop", e=>{ if(!hasFiles(e)) return; e.preventDefault(); dragDepth = 0; $("dropzone").classList.remove("on"); attachFiles(e.dataTransfer.files); });
+document.addEventListener("paste", e=>{
+  const files = [...(e.clipboardData?.files || [])];
+  if(files.length){ e.preventDefault(); attachFiles(files); }
+});
