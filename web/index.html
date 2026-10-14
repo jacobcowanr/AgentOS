@@ -23,10 +23,12 @@
     <button class="nav" data-page="browser"><i data-i="globe"></i>Browser<kbd>3</kbd></button>
     <button class="nav" data-page="oracle"><i data-i="spark"></i>Hermes Oracle<kbd>4</kbd></button>
     <button class="nav" data-page="models"><i data-i="cpu"></i>Models<span class="badge" id="newbadge" hidden></span><kbd>5</kbd></button>
+    <button class="nav" data-page="builds"><i data-i="code"></i>Builds<kbd>6</kbd></button>
+    <button class="nav" data-page="memory"><i data-i="brain"></i>Memory<kbd>7</kbd></button>
   </div>
   <div class="navgrp"><h6>CREW</h6>
-    <button class="nav" data-page="team"><i data-i="users"></i>Team Hermes<kbd>6</kbd></button>
-    <button class="nav" data-page="factory"><i data-i="cog"></i>AI Factory<kbd>7</kbd></button>
+    <button class="nav" data-page="team"><i data-i="users"></i>Team Hermes<kbd>8</kbd></button>
+    <button class="nav" data-page="factory"><i data-i="cog"></i>AI Factory<kbd>9</kbd></button>
   </div>
   <div class="sidefoot">
     <button class="modelchip" id="sidemodel" title="Switch model (⌘K)"><i>◆</i><span>Loading…</span></button>
@@ -57,10 +59,12 @@
           <button id="mic" title="Talk (Space)"><i data-i="mic"></i></button>
           <input id="vtext" placeholder="Speak, or type a command…" autocomplete="off" spellcheck="false">
           <div class="modes" id="vmodes"><button data-m="direct">CHAT</button><button data-m="web">WEB</button><button data-m="agent">AGENT</button></div>
+          <button class="icon-btn" id="vbrief" title="Daily briefing"><i data-i="sun"></i></button>
+          <button class="icon-btn" id="vwake" title="Wake word: “Hey AgentOS”"><i data-i="ear"></i></button>
           <button class="icon-btn" id="vhands" title="Hands-free conversation"><i data-i="loop"></i></button>
           <button class="icon-btn" id="vspeak" title="Spoken replies"><i data-i="speaker"></i></button>
         </div>
-        <div class="hint"><kbd>SPACE</kbd> TALK · <kbd>ESC</kbd> STOP · TRY “OPEN THE ORACLE”, “SEARCH THE WEB FOR …”, “TELL THE CREW TO …”</div>
+        <div class="hint"><kbd>SPACE</kbd> TALK · <kbd>TAB</kbd> ACCEPT SUGGESTION · <kbd>ESC</kbd> STOP · “BUILD ME A …” · “REMEMBER THAT …” · “BRIEF ME”</div>
       </div>
     </div>
     <div class="wid l glass live"><div class="h">Oracle pulse <b>LIVE</b></div><div id="hnews"><div class="empty"><span class="spin"></span></div></div></div>
@@ -166,6 +170,31 @@
     </div>
   </section>
 
+  <!-- BUILDS -->
+  <section class="page" id="p-builds">
+    <div class="wrap">
+      <div class="mhead"><div><div class="eyebrow">Voice builds</div><h1>Builds</h1><p class="muted">Say “build me a snake game”. AgentOS writes a self-contained app, saves it to <span class="mono" id="bddir">~/Projects/AgentOS-Builds</span> and runs it here in a sandbox.</p></div></div>
+      <div class="glass bdbar"><input class="input" id="bdin" placeholder="Describe an app — e.g. a pomodoro timer with a purple progress ring" autocomplete="off" spellcheck="false"><button class="btn pri" id="bdgo"><i data-i="code"></i>Build</button></div>
+      <div class="bgrid">
+        <div class="glass blist scroll" id="bdlist"></div>
+        <div class="glass bprev">
+          <div class="h"><span id="bdtitle">PREVIEW</span><span style="display:flex;gap:6px"><button class="btn ghost sm" id="bdopen" disabled><i data-i="ext"></i>Open in window</button><button class="btn ghost sm" id="bddel" disabled><i data-i="trash"></i>Remove</button></span></div>
+          <div id="bdstat" class="status" style="margin-bottom:8px"></div>
+          <iframe id="bdframe" sandbox="allow-scripts allow-pointer-lock allow-modals allow-forms" title="Build preview"></iframe>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- MEMORY -->
+  <section class="page" id="p-memory">
+    <div class="wrap" style="max-width:900px">
+      <div class="mhead"><div><div class="eyebrow">Long-term memory</div><h1>Memory</h1><p class="muted">Say “remember that …”, “what do you remember about …” or “forget …”. Every model sees these notes as context.</p></div></div>
+      <div class="glass bdbar"><input class="input" id="memin" placeholder="Something AgentOS should always know…" autocomplete="off"><button class="btn pri" id="memadd"><i data-i="plus"></i>Remember</button></div>
+      <div class="glass" id="memlist" style="padding:4px 0"></div>
+    </div>
+  </section>
+
   <!-- TEAM HERMES -->
   <section class="page pass" id="p-team">
     <div class="hud l glass live"><div class="h">Crew <b id="crewcount"></b></div><div id="crew"></div><div class="detail" id="detail"></div></div>
@@ -204,6 +233,10 @@
   <div class="row"><button class="btn ghost" id="ap-cancel">Cancel</button><button class="btn pri" id="ap-save">Add &amp; fetch models</button></div>
 </div></div>
 
+<div id="mini" hidden>
+  <div class="mbub glass" id="mbub"><b id="mlabel">STANDING BY</b><span id="mtext"></span></div>
+  <button id="mcore" title="Talk to AgentOS"><i class="r1"></i><i class="r2"></i><i class="c"></i></button>
+</div>
 <div id="toasts"></div>
 <div id="boot"><div class="in"><div class="bt">Agent<b>OS</b></div><pre id="bootlines"></pre></div></div>
 

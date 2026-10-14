@@ -49,6 +49,10 @@ const ICON = {
   ext:'<path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/>',
   send:'<path d="M4 12l16-8-6 16-2.5-6.5z"/>', plus:'<path d="M12 5v14M5 12h14"/>',
   stop:'<rect x="6" y="6" width="12" height="12" rx="2"/>',
+  code:'<path d="M8 8l-5 4 5 4M16 8l5 4-5 4M14 4l-4 16"/>',
+  brain:'<path d="M9 4a3 3 0 0 0-3 3 3 3 0 0 0-2 5 3 3 0 0 0 2 5 3 3 0 0 0 3 3 3 3 0 0 0 3-3V7a3 3 0 0 0-3-3zM15 4a3 3 0 0 1 3 3 3 3 0 0 1 2 5 3 3 0 0 1-2 5 3 3 0 0 1-3 3 3 3 0 0 1-3-3"/>',
+  sun:'<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',
+  ear:'<path d="M6 9a6 6 0 1 1 12 0c0 3-2 4-3 5.5S14 18 12 19a3 3 0 0 1-4-2"/><path d="M9.5 9.5a2.5 2.5 0 0 1 5 0c0 1.5-1.5 2-1.5 3.5"/>',
 };
 const icon = n => `<svg viewBox="0 0 24 24">${ICON[n]||""}</svg>`;
 $$("i[data-i]").forEach(i => i.outerHTML = icon(i.dataset.i));
@@ -171,8 +175,8 @@ class Ghost {
 }
 
 /* ---------- router ---------- */
-const PAGES = ["home","chat","browser","oracle","models","team","factory"];
-const TITLE = {home:"Home", chat:"Chat", browser:"Browser", oracle:"Hermes Oracle", models:"Models", team:"Team Hermes", factory:"AI Factory"};
+const PAGES = ["home","chat","browser","oracle","models","builds","memory","team","factory"];
+const TITLE = {home:"Home", chat:"Chat", browser:"Browser", oracle:"Hermes Oracle", models:"Models", builds:"Builds", memory:"Memory", team:"Team Hermes", factory:"AI Factory"};
 const HUDVIEW = {home:"home", team:"team", factory:"factory"};
 let page = "home";
 function go(p){
@@ -190,6 +194,9 @@ function go(p){
   if(p === "chat") setTimeout(()=>$("cin").focus(), 60);
   if(p === "home") setTimeout(()=>{ if(!V.listening) $("vtext").focus(); }, 60);
   if(p === "browser" && !B.hist.length) B.renderHome();
+  if(p === "builds") loadBuilds();
+  if(p === "memory") loadMemory();
+  $("mini").hidden = p === "home";
 }
 $$(".nav").forEach(b=>b.onclick = ()=>go(b.dataset.page));
 
@@ -377,14 +384,23 @@ $("chatmodel").onclick = e=>openPicker(e.currentTarget);
 const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
 const V = { rec:null, listening:false, speaking:false, busy:false, abort:null, history:[], empties:0,
   hands:LS.get("hands", false), speak:LS.get("speak", true), mode:LS.get("vmode", "direct"), stream:null, meterRaf:0 };
-function setVState(m, label){ HUD.setMode(m); $("vlabel").textContent = label; $("mic").classList.toggle("live", m === "listen"); $("led-mic").className = "led " + (m === "idle" ? "idle" : "ok"); $("micstat").textContent = m === "idle" ? (V.hands ? "HANDS-FREE" : "VOICE READY") : label; }
+let miniTimer = 0;
+function miniShow(text){
+  const el = $("mini"); if(text != null) $("mtext").textContent = text.length > 400 ? "…" + text.slice(-400) : text;
+  el.classList.add("show"); clearTimeout(miniTimer);
+  miniTimer = setTimeout(()=>{ if(!V.busy && !V.speaking && !V.listening) el.classList.remove("show"); }, 9000);
+}
+function setVState(m, label){ HUD.setMode(m); $("vlabel").textContent = label;
+  $("mini").className = m === "idle" ? "" : m; $("mlabel").textContent = label; if(m !== "idle") miniShow(); else if($("mini").hidden === false) miniShow(); $("mic").classList.toggle("live", m === "listen"); $("led-mic").className = "led " + (m === "idle" ? "idle" : "ok"); $("micstat").textContent = m === "idle" ? (V.hands ? "HANDS-FREE" : "VOICE READY") : label; }
 function renderVoiceToggles(){
-  $("vhands").classList.toggle("on", V.hands); $("vspeak").classList.toggle("on", V.speak);
+  $("vhands").classList.toggle("on", V.hands); $("vspeak").classList.toggle("on", V.speak); $("vwake").classList.toggle("on", !!V.wake);
   $$("#vmodes button").forEach(b=>b.classList.toggle("on", b.dataset.m === V.mode));
 }
 $$("#vmodes button").forEach(b=>b.onclick = ()=>{ V.mode = b.dataset.m; LS.set("vmode", V.mode); renderVoiceToggles(); });
 function setHands(on){ V.hands = on; LS.set("hands", on); V.empties = 0; renderVoiceToggles(); if(on && !V.listening && !V.busy && !V.speaking) listen(); }
-$("vhands").onclick = ()=>setHands(!V.hands);
+$("vhands").onclick = ()=>{ if(!V.hands && V.wake) setWake(false); setHands(!V.hands); };
+$("vwake").onclick = ()=>setWake(!V.wake);
+$("vbrief").onclick = ()=>briefing("daily");
 $("vspeak").onclick = ()=>{ V.speak = !V.speak; LS.set("speak", V.speak); if(!V.speak) stopSpeaking(); renderVoiceToggles(); };
 
 async function meterOn(){
@@ -402,6 +418,7 @@ function meterOff(){ cancelAnimationFrame(V.meterRaf); if(V.stream){ V.stream.ge
 function listen(){
   if(!SR){ toast("Voice input needs Chrome", "This browser has no Web Speech API — type below instead.", "bad"); $("vtext").focus(); return; }
   if(V.listening){ V.rec && V.rec.stop(); return; }
+  if(V.wakeRec){ wakeStop(); setTimeout(listen, 180); return; }
   stopSpeaking(); if(V.abort) V.abort.abort();
   const rec = new SR(); rec.lang = "en-US"; rec.interimResults = true; rec.continuous = false; rec.maxAlternatives = 1;
   let final = "";
@@ -420,6 +437,7 @@ function listen(){
     const t = final.trim();
     if(t){ V.empties = 0; handleUtterance(t); return; }
     setVState("idle", V.hands ? "HANDS-FREE · SAY SOMETHING" : "STANDING BY");
+    if(!V.hands) wakeStart();
     if(V.hands && page === "home"){
       if(++V.empties >= 4){ setHands(false); toast("Hands-free paused", "No speech for a while. Press Space or tap the mic to resume."); setVState("idle", "STANDING BY"); }
       else setTimeout(()=>{ if(V.hands && !V.listening && !V.busy && !V.speaking) listen(); }, 300);
@@ -428,6 +446,7 @@ function listen(){
   V.rec = rec; try{ rec.start(); }catch{}
 }
 $("mic").onclick = listen;
+$("mcore").onclick = ()=>{ if(V.busy || V.speaking){ stopAll(); return; } listen(); };
 
 /* text-to-speech, streamed sentence by sentence */
 const TTS = {buf:""};
@@ -457,11 +476,48 @@ function flushSpeech(){ if(TTS.buf.trim()) speakChunk(TTS.buf); TTS.buf = ""; }
 function stopSpeaking(){ TTS.buf = ""; speechSynthesis.cancel(); V.speaking = false; }
 function speechDone(){
   if(V.busy || V.speaking) return;
-  setVState("idle", V.hands ? "HANDS-FREE" : "STANDING BY");
+  setVState("idle", V.hands ? "HANDS-FREE" : V.wake ? "SAY “HEY AGENTOS”" : "STANDING BY");
   if(V.hands && page === "home") setTimeout(()=>{ if(V.hands && !V.listening && !V.busy && !V.speaking) listen(); }, 350);
+  else wakeStart();
 }
-function say(msg){ $("vreply").textContent = msg; $("vsrc").innerHTML = ""; if(V.speak){ stopSpeaking(); speakChunk(msg); } else speechDone(); }
-function stopAll(){ if(V.rec){ V.rec.abort(); } if(V.abort) V.abort.abort(); stopSpeaking(); V.busy = false; setVState("idle", "STANDING BY"); }
+
+/* wake word — a continuous recogniser that only listens for “Hey AgentOS” (or “Jarvis”) */
+V.wake = LS.get("wake", false);
+const WAKE_RX = /\b(?:hey|hi|ok|okay|yo)?[\s,]*(?:agent[\s-]?o\.?\s?s\.?|agentos|agent of s|agent oss|jarvis)\b[\s,.!?]*(.*)$/i;
+function chime(){
+  try{ const c = V.actx || (V.actx = new AudioContext()); const o = c.createOscillator(), g = c.createGain();
+    o.type = "sine"; o.frequency.setValueAtTime(660, c.currentTime); o.frequency.exponentialRampToValueAtTime(990, c.currentTime + .12);
+    g.gain.setValueAtTime(.0001, c.currentTime); g.gain.exponentialRampToValueAtTime(.18, c.currentTime + .02); g.gain.exponentialRampToValueAtTime(.0001, c.currentTime + .25);
+    o.connect(g).connect(c.destination); o.start(); o.stop(c.currentTime + .26); }catch{}
+}
+function wakeStop(){ const r = V.wakeRec; V.wakeRec = null; if(r){ r.onend = null; r.onresult = null; try{ r.abort(); }catch{} } }
+function wakeStart(){
+  if(!SR || !V.wake || V.wakeRec || V.listening || V.busy || V.speaking || V.hands) return;
+  const r = new SR(); r.lang = "en-US"; r.continuous = true; r.interimResults = true;
+  let hit = null;
+  r.onresult = e=>{
+    const res = e.results[e.results.length - 1], m = res[0].transcript.match(WAKE_RX);
+    if(!m) return;
+    HUD.setMode("listen"); $("vlabel").textContent = "YES?";
+    if(res.isFinal){ hit = m[1].trim(); try{ r.stop(); }catch{} }
+  };
+  r.onerror = e=>{ if(e.error === "not-allowed" || e.error === "service-not-allowed"){ V.wake = false; LS.set("wake", false); renderVoiceToggles(); toast("Wake word needs the microphone", "Allow mic access for 127.0.0.1, then turn it back on.", "bad"); } };
+  r.onend = ()=>{
+    if(V.wakeRec !== r) return; V.wakeRec = null;
+    if(hit !== null){
+      chime();
+      if(hit.replace(/[^a-z0-9]/gi, "").length > 2) handleUtterance(hit); else listen();
+    } else setTimeout(wakeStart, 300);     // Chrome ends continuous sessions every ~minute — just re-arm
+  };
+  V.wakeRec = r; try{ r.start(); }catch{ V.wakeRec = null; }
+}
+function setWake(on){
+  V.wake = on; LS.set("wake", on); renderVoiceToggles();
+  if(on){ if(V.hands) setHands(false); wakeStart(); toast("Wake word on", "Say “Hey AgentOS” — then your request. Chrome streams mic audio to Google while this is on."); setVState("idle", "SAY “HEY AGENTOS”"); }
+  else { wakeStop(); setVState("idle", "STANDING BY"); }
+}
+function say(msg){ $("vreply").textContent = msg; $("vsrc").innerHTML = ""; miniShow(msg); if(V.speak){ stopSpeaking(); speakChunk(msg); } else speechDone(); }
+function stopAll(){ wakeStop(); setTimeout(wakeStart, 600); if(V.rec){ V.rec.abort(); } if(V.abort) V.abort.abort(); stopSpeaking(); V.busy = false; setVState("idle", "STANDING BY"); }
 
 /* intents — say it naturally; anything else goes to the model */
 const NAVMAP = {home:"home", chat:"chat", browser:"browser", web:"browser", "web browser":"browser", oracle:"oracle", news:"oracle", model:"models", models:"models", catalog:"models", "model catalog":"models",
@@ -474,7 +530,14 @@ const INTENTS = [
   [/^(?:open|go to|visit|browse to|pull up)\s+((?:https?:\/\/)?[a-z0-9-]+(?:\s?(?:dot|\.)\s?[a-z0-9-]+)+(?:\/\S*)?)[.!]?$/i,
     m=>{ const url = m[1].replace(/\s?dot\s?/gi, ".").replace(/\s/g, ""); go("browser"); B.nav(url); say(`Opening ${url}.`); }],
   [/^(?:search(?: the web| online| the internet)?(?: for)?|google|look up|browse for|find me)\s+(.+)/i, m=>{ B.search(m[1].replace(/[.?!]$/,""), false); return converse(m[0], {web:true}); }],
-  [/(?:what'?s|what is|anything) (?:new|hot|happening|trending|the latest)(?: in| with)? (?:ai|a\.i\.|the ai world|artificial intelligence)|consult the oracle|\bai news\b|news brief(?:ing)?|brief me|daily brief/i, ()=>O.consult(true)],
+  [/^(?:remember|note|don'?t forget|make a note)(?: that| this)?[:,]?\s+(.{3,})/i, m=>memoryAdd(m[1].replace(/[.!]$/,""), true)],
+  [/^what (?:do you|else do you) (?:remember|know about me|have in memory)(?: about (.+?))?\??$/i, m=>memoryRecall(m[1])],
+  [/^forget(?: that| about)?\s+(.+)/i, m=>memoryForget(m[1].replace(/[.!]$/,""))],
+  [/(?:what'?s|what is|anything) (?:new|hot|happening|trending|the latest)(?: in| with)? (?:ai|a\.i\.|the ai world|artificial intelligence)|consult the oracle|\bai news\b|news brief(?:ing)?|brief me on (?:the )?(?:ai|news)/i, ()=>O.consult(true)],
+  [/^(?:(?:give|read) me |what'?s )?(?:my |the )?(daily|morning|weekly|evening)?\s*brief(?:ing)?[.!?]?$|^brief me[.!]?$|^good (?:morning|afternoon|evening)(?:,? (?:agent ?os|jarvis))?[.!]?$/i, m=>briefing((m[1]||"").toLowerCase() === "weekly" ? "weekly" : "daily")],
+  [/^(?:(?:can|could|would) you |please )?(?:build|code|make|create)(?: me)? (?:an? |the )?(.*?\b(?:game|app|tool|website|site|dashboard|calculator|timer|tracker|clock|visuali[sz]er|widget|simulator|editor|player|board|quiz|generator|converter|planner|keyboard|synth|drum machine|chart)s?\b.*?)[.!?]?$/i, m=>buildApp(m[0].replace(/^(?:(?:can|could|would) you |please )/i,""), true)],
+  [/^play (.+?) on youtube[.!]?$/i, m=>openChrome("https://www.youtube.com/results?search_query=" + encodeURIComponent(m[1]), `Playing ${m[1]} on YouTube.`)],
+  [/^(?:open|show|pull up|go to|launch)\s+(.+?)\s+(?:in|on|with) (?:chrome|google chrome|my browser|the real browser)[.!]?$/i, m=>openChrome(resolveSite(m[1]), `Opening ${m[1]} in Chrome.`)],
   [/^(?:(?:tell|ask|have|get) (?:the )?(?:crew|team|hermes team|team hermes)(?: to)?|dispatch(?: to the crew)?|team hermes,?)\s+(.+)/i, m=>dispatchVoice(m[1])],
   [/^(?:switch|change|set)(?: the)? (?:model|brain)(?: to)?\s+(.+)|^use (?:the )?(.+?) model[.!]?$/i, m=>switchModelVoice(m[1] || m[2])],
   [/^(?:hands[- ]?free|conversation mode)(?: mode)?\s+(on|off)/i, m=>{ say(`Hands-free ${m[1].toLowerCase()}.`); setHands(m[1].toLowerCase() === "on"); }],
@@ -498,7 +561,7 @@ async function converse(text, {web=false, agent=false, prompt=null} = {}){
   const ac = V.abort = new AbortController();
   try{
     await streamChat({provider:model.provider, model:model.id, messages:V.history, web, voice:true}, ev=>{
-      if(ev.type === "delta"){ out += ev.text; $("vreply").textContent = out; $("vreply").scrollTop = 1e9; if(V.speak) feedSpeech(ev.text); if(!V.speaking) setVState("think", "RESPONDING"); }
+      if(ev.type === "delta"){ out += ev.text; $("vreply").textContent = out; $("vreply").scrollTop = 1e9; if(page !== "home") miniShow(out); if(V.speak) feedSpeech(ev.text); if(!V.speaking) setVState("think", "RESPONDING"); }
       else if(ev.type === "status" && !out) $("vlabel").textContent = ev.text.replace("…","").toUpperCase();
       else if(ev.type === "sources") $("vsrc").innerHTML = ev.items.slice(0, 5).map(s=>`<a data-url="${esc(s.url)}" href="${esc(s.url)}">${esc(s.title || host(s.url))}</a>`).join("");
       else if(ev.type === "error") throw new Error(ev.error);
@@ -539,7 +602,9 @@ async function switchModelVoice(q){
 /* home text input + ghost text */
 const VOICE_CMDS = ["open the oracle", "open the browser", "open the model catalog", "open team hermes", "open the ai factory", "open chat",
   "search the web for ", "what's new in AI today?", "consult the oracle", "brief me on AI news", "tell the crew to research ", "tell the crew to write ",
-  "tell the crew to build ", "switch model to ", "hands-free on", "hands-free off", "refresh the catalog"];
+  "tell the crew to build ", "switch model to ", "hands-free on", "hands-free off", "refresh the catalog",
+  "give me my daily briefing", "give me my weekly briefing", "build me a ", "build me a snake game", "remember that ", "what do you remember about ",
+  "forget ", "play  on youtube", "open github in chrome", "open youtube in chrome"];
 const vGhost = new Ghost($("vtext"), {kind:"voice", context:()=>V.history.slice(-6),
   local:v=>{
     const lv = v.toLowerCase();
@@ -550,7 +615,7 @@ const vGhost = new Ghost($("vtext"), {kind:"voice", context:()=>V.history.slice(
     return [...HIST.get("voice"), ...VOICE_CMDS];
   }});
 $("vtext").addEventListener("keydown", e=>{ if(e.key === "Enter" && $("vtext").value.trim()){ const t = $("vtext").value; $("vtext").value = ""; vGhost.clear(); handleUtterance(t); } });
-const HOME_SUG = ["What's new in AI today?", "Search the web for the best free coding models", "Tell the crew to research Hermes skills", "Open the model catalog"];
+const HOME_SUG = ["Give me my daily briefing", "What's new in AI today?", "Build me a snake game", "Search the web for the best free coding models"];
 $("hsug").innerHTML = HOME_SUG.map(s=>`<button class="chip">${esc(s)}</button>`).join("");
 $$("#hsug .chip").forEach(c=>c.onclick = ()=>handleUtterance(c.textContent));
 
@@ -777,8 +842,11 @@ function renderOracle(){
   $$("#ofilt .chip").forEach(c=>c.onclick = ()=>{ O.filter = c.dataset.s; renderOracle(); });
   const items = d.items.filter(i=>O.filter === "All" || i.source === O.filter).slice(0, 80);
   $("ofcount").textContent = `${items.length} SIGNALS`;
-  $("ofeed").innerHTML = items.map(i=>`<div class="news" data-url="${esc(i.link)}"><span class="src" style="${srcStyle(i.source)}">${esc(i.source.toUpperCase())}</span><div class="nt">${esc(i.title)}</div>${i.summary?`<div class="ns">${esc(i.summary)}</div>`:""}<div class="nm">${ago(i.ts)} · ${esc(host(i.link))}</div></div>`).join("");
-  $$("#ofeed .news").forEach(n=>n.onclick = ()=>{ go("browser"); B.open(n.dataset.url); });
+  $("ofeed").innerHTML = items.map(i=>`<div class="news" data-url="${esc(i.link)}"><span class="src" style="${srcStyle(i.source)}">${esc(i.source.toUpperCase())}</span><div class="nt">${esc(i.title)}</div>${i.summary?`<div class="ns">${esc(i.summary)}</div>`:""}<div class="nm">${ago(i.ts)} · ${esc(host(i.link))}</div><button class="btn ghost sm draft">${icon("spark")}Draft this</button></div>`).join("");
+  $$("#ofeed .news").forEach((n, k)=>{
+    n.onclick = ()=>{ go("browser"); B.open(n.dataset.url); };
+    n.querySelector(".draft").onclick = e=>{ e.stopPropagation(); draftFrom(items[k]); };
+  });
   $("otrend").innerHTML = d.trending.slice(0, 10).map(t=>`<div class="lrow"><span title="${esc(t.id)}">${esc(t.id)}</span><small>${esc(t.task||"")} · ♥ ${t.likes??0}</small></div>`).join("") || `<div class="empty">Unavailable</div>`;
   $$("#otrend .lrow").forEach((r,i)=>r.onclick = ()=>{ go("browser"); B.open(d.trending[i].url); });
   $("osrc").innerHTML = d.sources.map(s=>`<div class="lrow"><i class="led ${s.error?"":"ok"}"></i><span>${esc(s.name)}</span><small title="${esc(s.error||"")}">${s.error?"error":s.count+" items"}</small></div>`).join("")
@@ -915,7 +983,7 @@ addEventListener("keydown", e=>{
   if((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k"){ e.preventDefault(); openPicker($("sidemodel")); return; }
   if(e.key === "Escape"){ closePicker(); $("modal").classList.remove("on"); if(V.listening || V.busy || V.speaking){ stopAll(); } return; }
   if(typing || e.metaKey || e.ctrlKey || e.altKey) return;
-  if(/^[1-7]$/.test(e.key)){ go(PAGES[+e.key - 1]); e.preventDefault(); }
+  if(/^[1-9]$/.test(e.key)){ go(PAGES[+e.key - 1]); e.preventDefault(); }
   else if(e.code === "Space" && page === "home"){ e.preventDefault(); listen(); }
 });
 // Space from the empty home input also talks
@@ -939,3 +1007,128 @@ setInterval(tick, 1000); tick();
   for(const l of lines){ out.textContent += "▸ " + l + "\n"; await new Promise(r=>setTimeout(r, 220)); }
   await new Promise(r=>setTimeout(r, 300)); $("boot").classList.add("gone");
 })();
+
+
+/* =====================================================================================
+   APOLLO PARITY — briefing, memory, voice builds, real-browser control, Oracle drafts
+   ===================================================================================== */
+async function briefing(kind="daily"){
+  setVState("think", "PREPARING BRIEFING");
+  let f; try{ f = await api.get("/api/briefing"); }catch(e){ say("I couldn't gather the briefing data: " + e.message); return; }
+  const part = f.hour < 12 ? "morning" : f.hour < 18 ? "afternoon" : "evening";
+  const prompt = `Write Jacob's ${kind} briefing, spoken aloud by AgentOS in a calm JARVIS style. Start exactly with "Good ${part}, Jacob." `
+    + `Then: how many open crew tasks and what's running or blocked; what got done; one line on the AI Factory; the 2 most important AI headlines; any new free models worth trying; `
+    + `and end with the single best next step. ${kind === "weekly" ? "Frame it as a look back at the week and the week ahead. Under 160 words." : "Under 110 words."} `
+    + `Use only these facts and do not invent tasks:\n${JSON.stringify(f)}`;
+  if(page !== "home") miniShow("");
+  return converse(kind === "weekly" ? "Give me my weekly briefing" : "Give me my daily briefing", {prompt});
+}
+
+/* memory */
+let MEM = [];
+async function loadMemory(){ try{ MEM = (await api.get("/api/memory")).memories; }catch{} renderMemory(); }
+function renderMemory(){
+  $("memlist").innerHTML = MEM.slice().reverse().map(m=>`<div class="mem"><span>${esc(m.text)}</span><small>${ago(m.ts)}</small><button data-id="${esc(m.id)}" title="Forget">✕</button></div>`).join("")
+    || `<div class="empty">Nothing yet. Try saying “remember that I prefer short answers”.</div>`;
+  $$("#memlist [data-id]").forEach(b=>b.onclick = async ()=>{ await api.post("/api/memory/delete", {id:b.dataset.id}); loadMemory(); });
+}
+async function memoryAdd(text, spoken){
+  text = text.trim().replace(/^(?:my|i)\b/i, s=>s); if(!text) return;
+  try{ await api.post("/api/memory", {text}); await loadMemory(); if(spoken) say("Noted. I'll remember that."); else toast("Remembered", text, "good"); }
+  catch(e){ spoken ? say("I couldn't save that: " + e.message) : toast("Couldn't save", e.message, "bad"); }
+}
+async function memoryRecall(q){
+  await loadMemory();
+  const words = (q||"").toLowerCase().split(/\W+/).filter(w=>w.length > 2);
+  const hits = words.length ? MEM.filter(m=>words.some(w=>m.text.toLowerCase().includes(w))) : MEM;
+  if(!hits.length) return say(q ? `I don't have anything saved about ${q}.` : "My memory is empty so far. Say “remember that…” to teach me.");
+  say((q ? `About ${q}: ` : `I remember ${hits.length} thing${hits.length>1?"s":""}. `) + hits.slice(-6).map(m=>m.text).join(". ") + ".");
+}
+async function memoryForget(q){
+  await loadMemory();
+  const words = q.toLowerCase().split(/\W+/).filter(w=>w.length > 2);
+  const scored = MEM.map(m=>({m, s:words.filter(w=>m.text.toLowerCase().includes(w)).length})).filter(x=>x.s).sort((a,b)=>b.s-a.s);
+  if(!scored.length) return say(`I don't have anything matching ${q}.`);
+  await api.post("/api/memory/delete", {id:scored[0].m.id}); await loadMemory();
+  say(`Forgotten: ${scored[0].m.text}.`);
+}
+$("memadd").onclick = ()=>{ const t = $("memin").value.trim(); if(t){ $("memin").value = ""; memoryAdd(t, false); } };
+$("memin").addEventListener("keydown", e=>{ if(e.key === "Enter") $("memadd").click(); });
+
+/* voice builds */
+const BD = {list:[], sel:null, busy:false};
+async function loadBuilds(){
+  try{ const d = await api.get("/api/builds"); BD.list = d.builds; $("bddir").textContent = d.dir.replace(/^\/Users\/[^/]+/, "~"); }catch{}
+  renderBuilds();
+}
+function renderBuilds(){
+  $("bdlist").innerHTML = BD.list.map(b=>`<div class="bd ${BD.sel===b.slug?"on":""}" data-s="${esc(b.slug)}"><b>${esc(b.title)}</b><small title="${esc(b.prompt)}">${esc(b.prompt)}</small><small>${ago(b.ts)} · ${esc((b.model||"").split("::").pop())}</small></div>`).join("")
+    || `<div class="empty">No builds yet. Say “build me a snake game”.</div>`;
+  $$("#bdlist .bd").forEach(el=>el.onclick = ()=>showBuild(el.dataset.s));
+}
+function showBuild(slug){
+  const b = BD.list.find(x=>x.slug === slug); if(!b) return;
+  BD.sel = slug; $("bdtitle").textContent = b.title.toUpperCase();
+  // srcdoc (not src): no frame request for blockers to intercept; the sandbox attribute keeps it an opaque origin
+  fetch(b.url, {cache:"no-store"}).then(r=>r.text()).then(html=>{ if(BD.sel === slug) $("bdframe").srcdoc = html; }).catch(e=>{ $("bdstat").innerHTML = `<span class="err">⚠ ${esc(e.message)}</span>`; });
+  $("bdopen").disabled = $("bddel").disabled = false; $("bdstat").textContent = ""; renderBuilds();
+}
+$("bdopen").onclick = ()=>{ const b = BD.list.find(x=>x.slug === BD.sel); b && window.open(b.url, "_blank", "width=1100,height=800"); };
+$("bddel").onclick = async ()=>{ if(!BD.sel || !confirm("Remove this build? (moved to AgentOS-Builds/.trash)")) return; await api.post("/api/builds/delete", {slug:BD.sel}); BD.sel = null; $("bdframe").srcdoc = ""; $("bdtitle").textContent = "PREVIEW"; loadBuilds(); };
+async function buildApp(prompt, spoken){
+  prompt = prompt.trim(); if(!prompt) return; if(BD.busy){ spoken && say("I'm still building the last one."); return; }
+  BD.busy = true; HIST.add("build", prompt);
+  if(spoken){ say(`On it. Building ${prompt.replace(/^(build|make|create|code)( me)?\s*/i, "").replace(/[.!?]+$/, "")}.`); }
+  go("builds"); $("bdin").value = ""; $("bdgo").disabled = true;
+  const model = active.provider === "hermes" ? DEFAULT_MODEL : active;
+  $("bdstat").innerHTML = `<span class="spin"></span> Building with ${esc(shortName(model))}…`; $("bdtitle").textContent = "BUILDING…";
+  try{
+    const r = await fetch("/api/build", {method:"POST", headers:{"Content-Type":"application/json","X-AgentOS":"1"}, body:JSON.stringify({prompt, provider:model.provider, model:model.id})});
+    const reader = r.body.getReader(), dec = new TextDecoder(); let buf = "", done = null;
+    for(;;){
+      const {value, done:end} = await reader.read(); if(end) break;
+      buf += dec.decode(value, {stream:true}); let i;
+      while((i = buf.indexOf("\n\n")) >= 0){
+        const line = buf.slice(0, i); buf = buf.slice(i + 2); if(!line.startsWith("data:")) continue;
+        const ev = JSON.parse(line.slice(5));
+        if(ev.type === "thinking") $("bdstat").innerHTML = `<span class="spin"></span> Designing… ${ev.n.toLocaleString()} chars of reasoning`;
+        else if(ev.type === "progress") $("bdstat").innerHTML = `<span class="spin"></span> Writing code… ${ev.chars.toLocaleString()} chars`;
+        else if(ev.type === "error") throw new Error(ev.error);
+        else if(ev.type === "done") done = ev;
+      }
+    }
+    if(!done) throw new Error("the build stream ended early");
+    await loadBuilds(); showBuild(done.slug);
+    $("bdstat").textContent = `Built in ${(done.ms/1000).toFixed(1)}s · saved to ${done.path.replace(/^\/Users\/[^/]+/, "~")}`;
+    if(spoken) say(`${done.title} is ready. It's running on the Builds page.`); else toast(`${done.title} is ready`, "", "good");
+  }catch(e){ $("bdstat").innerHTML = `<span class="err">⚠ ${esc(e.message)}</span>`; $("bdtitle").textContent = "PREVIEW"; if(spoken) say("The build failed: " + e.message); }
+  BD.busy = false; $("bdgo").disabled = false;
+}
+$("bdgo").onclick = ()=>buildApp($("bdin").value, false);
+$("bdin").addEventListener("keydown", e=>{ if(e.key === "Enter") buildApp($("bdin").value, false); });
+new Ghost($("bdin"), {kind:"chat", local:()=>[...HIST.get("build"), "a snake game", "a pomodoro timer with a purple progress ring", "a markdown editor with live preview", "a habit tracker", "a typing speed test"]});
+new Ghost($("memin"), {kind:"chat", remote:false, local:()=>["I prefer short, direct answers", "my bachelor's starts November 11, 2026", "I'm moving into IT operations and cybersecurity"]});
+
+/* real-browser control */
+const SITES_MAP = {youtube:"https://www.youtube.com", gmail:"https://mail.google.com", github:"https://github.com", "google drive":"https://drive.google.com", drive:"https://drive.google.com",
+  calendar:"https://calendar.google.com", "hugging face":"https://huggingface.co", huggingface:"https://huggingface.co", openrouter:"https://openrouter.ai", "nous portal":"https://portal.nousresearch.com",
+  linkedin:"https://www.linkedin.com", reddit:"https://www.reddit.com", "hacker news":"https://news.ycombinator.com", obsidian:"https://obsidian.md", claude:"https://claude.ai", chatgpt:"https://chatgpt.com"};
+function resolveSite(q){
+  const k = q.toLowerCase().replace(/^the /, "").trim();
+  if(SITES_MAP[k]) return SITES_MAP[k];
+  const dom = k.replace(/\s?dot\s?/g, ".").replace(/\s/g, "");
+  if(/^[\w-]+(\.[\w-]+)+(\/\S*)?$/.test(dom)) return "https://" + dom;
+  return "https://duckduckgo.com/?q=" + encodeURIComponent("!ducky " + q);
+}
+async function openChrome(url, msg){
+  try{ await api.post("/api/open", {url}); say(msg); }catch(e){ say("I couldn't open Chrome: " + e.message); }
+}
+
+/* Oracle → draft a post in Chat */
+function draftFrom(item){
+  go("chat"); newChat();
+  $("cin").value = `Draft a short, punchy social post with a clear point of view about this AI story. Give me 2 variants and a one-line hook for each.\n\n${item.title}\n${item.summary||""}\n${item.link}`;
+  sendChat();
+}
+
+if(V.wake) setTimeout(wakeStart, 1500);

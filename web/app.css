@@ -385,3 +385,42 @@ body.dimbg .vignette{background:radial-gradient(ellipse 80% 70% at 60% 40%,rgba(
 #boot .bt b{font-weight:650;color:var(--accent2)}
 #boot pre{font:11px/2 var(--mono);letter-spacing:.24em;color:var(--accent2);margin-top:18px;text-align:left;display:inline-block;min-height:110px}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+
+/* ---------- BUILDS ---------- */
+.bdbar{display:flex;gap:8px;padding:12px;margin-bottom:14px}
+.bgrid{display:grid;grid-template-columns:300px 1fr;gap:14px;height:calc(100vh - 300px);min-height:420px}
+.blist{overflow:auto;padding:8px}
+.bd{padding:11px 12px;border-radius:10px;cursor:pointer;border:1px solid transparent}
+.bd:hover{background:rgba(var(--accent-rgb),.08)}
+.bd.on{background:rgba(var(--accent-rgb),.2);border-color:var(--line2)}
+.bd b{display:block;font-weight:600;font-size:13.5px;color:#fff}
+.bd small{display:block;font:10.5px var(--mono);color:var(--dim);margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bprev{display:flex;flex-direction:column;padding:14px 16px;overflow:hidden}
+#bdframe{flex:1;width:100%;border:1px solid var(--line);border-radius:10px;background:#05040b}
+
+/* ---------- MEMORY ---------- */
+.mem{display:grid;grid-template-columns:1fr auto auto;gap:12px;align-items:center;padding:12px 18px;border-bottom:1px solid rgba(var(--accent-rgb),.08)}
+.mem:last-child{border-bottom:0}
+.mem span{line-height:1.5}
+.mem small{font:10.5px var(--mono);color:var(--dim);white-space:nowrap}
+.mem button{border:0;background:none;color:var(--faint);cursor:pointer;font-size:14px}
+.mem button:hover{color:var(--warn)}
+
+/* ---------- floating reactor (every page except Home) ---------- */
+#mini{position:fixed;right:22px;bottom:22px;z-index:65;display:flex;align-items:flex-end;gap:12px}
+#mini[hidden]{display:none}
+#mcore{position:relative;width:68px;height:68px;border-radius:50%;border:0;cursor:pointer;background:radial-gradient(circle,rgba(13,18,48,.9),rgba(4,3,10,.9));box-shadow:0 0 0 1px var(--line2),0 8px 30px rgba(0,0,0,.5);flex:none}
+#mcore i{position:absolute;border-radius:50%}
+#mcore .c{inset:22px;background:radial-gradient(circle at 40% 35%,#fff,#d8ccff 20%,var(--accent) 55%,transparent 72%);box-shadow:0 0 22px rgba(var(--accent-rgb),.9);animation:breathe 3.2s ease-in-out infinite}
+#mcore .r1{inset:6px;border:1.5px solid rgba(var(--accent-rgb),.6);border-top-color:transparent;animation:rot 9s linear infinite}
+#mcore .r2{inset:13px;border:1px dashed rgba(var(--blue-rgb),.6);animation:rot 6s linear infinite reverse}
+#mini.listen #mcore .c{background:radial-gradient(circle at 40% 35%,#fff,#c9d4ff 20%,var(--blue) 55%,transparent 72%);box-shadow:0 0 26px rgba(var(--blue-rgb),1);animation-duration:.7s}
+#mini.think #mcore .r1,#mini.think #mcore .r2{animation-duration:1.4s}
+#mini.speak #mcore .c{animation-duration:.45s}
+.mbub{max-width:340px;padding:10px 14px;font-size:13px;line-height:1.45;opacity:0;transform:translateY(6px);transition:.3s;pointer-events:none}
+#mini.show .mbub{opacity:1;transform:none;pointer-events:auto}
+.mbub b{display:block;font:600 9px var(--mono);letter-spacing:.3em;color:var(--accent2);margin-bottom:4px}
+.mbub span{display:-webkit-box;-webkit-line-clamp:5;-webkit-box-orient:vertical;overflow:hidden}
+#toasts{bottom:104px}
+.news .draft{grid-column:2;justify-self:start;margin-top:4px;opacity:0;transition:.15s}
+.news:hover .draft{opacity:1}

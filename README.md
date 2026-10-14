@@ -13,8 +13,16 @@ Runs on `127.0.0.1:9120` only. Python standard library plus PyYAML on the server
 | **Browser** | Exa web search plus a server-side reader view, with a page assistant that summarizes and answers questions about the open page |
 | **Hermes Oracle** | Live AI news from 9 feeds, Hugging Face trending and new free models. *Consult the Oracle* writes a briefing; *Hear the brief* reads it aloud |
 | **Models** | Live catalog from Nous Portal, OpenRouter, Hugging Face, Cerebras, Gemini, Mistral, NVIDIA and Groq, plus any OpenAI-compatible provider you add. Free-tier filter, one-click test, NEW flags and auto-refresh every 30 minutes |
+| **Builds** | "Build me a snake game." A model writes one self-contained HTML app, saves it to `~/Projects/AgentOS-Builds/` and runs it in a sandbox. Built apps are served with a CSP `sandbox` header, so they can never call the AgentOS API |
+| **Memory** | "Remember that…", "What do you remember about…?", "Forget…". Notes are injected into every model as context. Stored in `data/memory.json` (mode 600, gitignored) |
 | **Team Hermes** | 3D crew constellation, Kanban board, and catalog-routed dispatch (`bin/agentos-dispatch`) |
 | **AI Factory** | Curator state, skill matrix galaxy and forge ledger |
+
+**Apollo-style voice:**
+- **Wake word**, off by default: say "Hey AgentOS" (or "Hey Jarvis") and then your request.
+- **Daily or weekly briefing:** say "brief me", "good morning" or press ☀. It covers the crew board, the AI Factory, top headlines and new free models.
+- **Real-browser control:** "open github in Chrome", "play lofi on YouTube".
+- **Floating reactor:** a corner orb you can talk to from any page.
 
 **Ghost text:** inline suggestions in every input. Tab accepts the whole suggestion; → accepts one word. Suggestions come from history and commands first, then a fast free model (Cerebras gpt-oss-120b, about 0.3s). After each reply it predicts your next message.
 

@@ -34,6 +34,8 @@ DATA = HERMES / "agentos" / "data"
 DATA.mkdir(parents=True, exist_ok=True)
 CUSTOM = DATA / "providers.json"          # custom providers (may hold keys -> chmod 600)
 CATSTATE = DATA / "catalog_state.json"    # first_seen per model + test results
+MEMORY = DATA / "memory.json"                 # things Jacob asked AgentOS to remember
+BUILDS = HOME / "Projects" / "AgentOS-Builds"   # voice-built single-file apps
 DB = HERMES / "kanban.db"
 SKILLS = HERMES / "skills"
 HBIN = str(HOME / ".local" / "bin" / "hermes")
@@ -594,6 +596,72 @@ def news_loop():
         try: _cache["news"] = (time.time(), news())
         except Exception: pass
 
+# ---------------------------------------------------------------- memory · briefing · builds · open-in-Chrome
+def memories():
+    return load_json(MEMORY, [])
+
+def memory_context():
+    m = memories()[-60:]
+    return ("Things Jacob has asked you to remember (treat as true unless he corrects them):\n" + "\n".join(f"- {x['text']}" for x in m)) if m else ""
+
+def briefing():
+    out = {"now": time.time(), "hour": time.localtime().tm_hour, "weekday": time.strftime("%A")}
+    try:
+        tasks = kanban()
+        openl = [t for t in tasks if t["status"] in ("todo", "ready", "running", "blocked", "review")]
+        out.update(open=len(openl), running=[t["title"] for t in tasks if t["status"] == "running"][:5],
+                   blocked=[t["title"] for t in tasks if t["status"] == "blocked"][:5],
+                   next_up=[f"{t['title']} ({t['assignee']})" for t in openl][:5],
+                   done_24h=sum(1 for t in tasks if t["status"] == "done" and (t.get("completed_at") or 0) > time.time() - 86400),
+                   done_7d=sum(1 for t in tasks if t["status"] == "done" and (t.get("completed_at") or 0) > time.time() - 7*86400))
+    except Exception as e:
+        out["kanban_error"] = str(e)
+    c = cached("curator", 30, curator)
+    if isinstance(c, dict) and not c.get("error"):
+        out["curator"] = {"skills_active": c.get("active"), "skills_stale": c.get("stale"), "skills_archived": c.get("archived"),
+                          "consolidation_enabled_now": c.get("consolidate"), "last_run_at": c.get("last_run_at"),
+                          "last_run_report_may_predate_current_settings": c.get("summary")}
+    n = cached("news", 900, news)
+    if isinstance(n, dict) and n.get("items"):
+        out["headlines"] = [f"{i['title']} ({i['source']})" for i in n["items"][:6]]
+    out["new_free_models"] = [m["key"] for m in CAT["models"] if m.get("new") and m.get("free")][:8]
+    out["memories"] = [m["text"] for m in memories()[-8:]]
+    out["builds"] = len(list_builds())
+    out["gateway"] = cached("gw", 5, gateway_up)
+    return out
+
+def list_builds():
+    if not BUILDS.exists(): return []
+    res = []
+    for d in BUILDS.iterdir():
+        f = d / "index.html"
+        if d.is_dir() and f.exists():
+            meta = load_json(d / "agentos.json", {})
+            res.append({"slug": d.name, "title": meta.get("title") or d.name, "prompt": meta.get("prompt", ""), "model": meta.get("model", ""),
+                        "ts": meta.get("ts") or f.stat().st_mtime, "size": f.stat().st_size, "url": f"/builds/{d.name}/index.html"})
+    return sorted(res, key=lambda b: -b["ts"])
+
+BUILD_SYS = ("You are an expert front-end engineer inside AgentOS. Build exactly what the user asks as ONE complete, self-contained HTML file: "
+             "inline CSS and JavaScript only, no external scripts, fonts, images or network requests (it runs offline in a sandbox). "
+             "Make it genuinely work and feel polished: responsive layout, keyboard and mouse (and touch where it makes sense), clear instructions on screen, "
+             "a dark theme using black #05040b, deep navy #0d1230 and Obsidian purple #8b6cef accents. "
+             "Output ONLY the HTML document starting with <!doctype html> — no explanation, no markdown fences.")
+
+def extract_html(txt):
+    t = re.sub(r"^```(?:html)?\s*", "", txt.strip(), flags=re.I); t = re.sub(r"```\s*$", "", t)
+    m = re.search(r"<!doctype html|<html", t, re.I)
+    if not m: return None
+    t = t[m.start():]
+    e = t.lower().rfind("</html>")
+    return t[:e + 7] if e >= 0 else t + "\n</html>"
+
+def open_external(url):
+    u = urllib.parse.urlparse(url)
+    if u.scheme not in ("http", "https") or not u.hostname: raise ValueError("only http(s) URLs")
+    chrome = "/Applications/Google Chrome.app"
+    args = ["open", "-a", chrome, url] if Path(chrome).exists() else ["open", url]
+    subprocess.run(args, check=True, timeout=10)
+
 # ---------------------------------------------------------------- HTTP
 STATIC = {".html": "text/html; charset=utf-8", ".js": "application/javascript; charset=utf-8", ".css": "text/css; charset=utf-8",
           ".svg": "image/svg+xml", ".png": "image/png", ".ico": "image/x-icon", ".woff2": "font/woff2"}
@@ -631,6 +699,18 @@ class H(BaseHTTPRequestHandler):
                 return self._send(200, {"q": qq, "results": res})
             if path == "/api/read":
                 return self._send(200, read_page(q.get("url", "")))
+            if path == "/api/memory": return self._send(200, {"memories": memories()})
+            if path == "/api/briefing": return self._send(200, briefing())
+            if path == "/api/builds": return self._send(200, {"builds": list_builds(), "dir": str(BUILDS)})
+            if path.startswith("/builds/"):
+                f = (BUILDS / urllib.parse.unquote(path[len("/builds/"):])).resolve()
+                if BUILDS.resolve() in f.parents and f.is_file() and f.suffix in STATIC:
+                    b = f.read_bytes()
+                    self.send_response(200); self.send_header("Content-Type", STATIC[f.suffix]); self.send_header("Content-Length", str(len(b)))
+                    # opaque origin even when opened top-level: generated code can never call the AgentOS API
+                    self.send_header("Content-Security-Policy", "sandbox allow-scripts allow-pointer-lock allow-modals allow-forms")
+                    self.send_header("Cache-Control", "no-store"); self.end_headers(); self.wfile.write(b); return
+                return self._send(404, {"error": "not found"})
             if path == "/api/news":
                 if q.get("refresh"): _cache.pop("news", None)
                 return self._send(200, cached("news", 900, news))
@@ -656,6 +736,26 @@ class H(BaseHTTPRequestHandler):
                 p = subprocess.run(args, capture_output=True, text=True, timeout=60, env=ENV)
                 return self._send(200, {"ok": p.returncode == 0, "out": (p.stdout + p.stderr).strip()})
             if path == "/api/models/test": return self.test_model(d)
+            if path == "/api/build": return self.build(d)
+            if path == "/api/memory":
+                text = re.sub(r"\s+", " ", str(d.get("text", ""))).strip()[:500]
+                if not text: return self._send(400, {"error": "empty"})
+                m = memories(); item = {"id": f"m{int(time.time()*1000)}", "text": text, "ts": time.time()}
+                m.append(item); save_json(MEMORY, m[-300:], private=True)
+                return self._send(200, {"ok": True, "memory": item})
+            if path == "/api/memory/delete":
+                ids = d.get("ids") or [d.get("id")]
+                save_json(MEMORY, [x for x in memories() if x["id"] not in ids], private=True)
+                return self._send(200, {"ok": True})
+            if path == "/api/open":
+                open_external(str(d.get("url", ""))); return self._send(200, {"ok": True})
+            if path == "/api/builds/delete":
+                slug = re.sub(r"[^a-z0-9-]", "", str(d.get("slug", "")))
+                p = BUILDS / slug
+                if slug and p.is_dir():
+                    trash = BUILDS / ".trash"; trash.mkdir(exist_ok=True)
+                    p.rename(trash / f"{slug}-{int(time.time())}")     # recoverable, never rm
+                return self._send(200, {"ok": True})
             if path == "/api/suggest":
                 text = str(d.get("text", ""))[:600]; kind = str(d.get("kind", "chat"))
                 ctx = d.get("context") if isinstance(d.get("context"), list) else []
@@ -705,6 +805,46 @@ class H(BaseHTTPRequestHandler):
         record_test(key, res)
         return self._send(200, res)
 
+    def build(self, d):
+        prompt = str(d.get("prompt", "")).strip()[:2000]
+        pid, model = str(d.get("provider", "")), str(d.get("model", ""))
+        if pid in ("", "hermes"): pid, model = "nous", "stepfun/step-5-preview:free"
+        self.send_response(200); self.send_header("Content-Type", "text/event-stream"); self.send_header("Cache-Control", "no-store")
+        self.send_header("Connection", "close"); self.end_headers(); self.close_connection = True
+        def emit(ev): self.wfile.write(f"data: {json.dumps(ev)}\n\n".encode()); self.wfile.flush()
+        t0 = time.time(); buf = []
+        try:
+            if not prompt: raise ValueError("describe what to build")
+            p = provider(pid)
+            if not p: raise ValueError(f"unknown provider '{pid}'")
+            base = re.sub(r"[^a-z0-9]+", "-", re.sub(r"^(please |could you |can you )?(build|make|create|code)( me)?( an?| the)? ", "", prompt.lower())).strip("-")[:40] or "build"
+            BUILDS.mkdir(parents=True, exist_ok=True)
+            slug, n = base, 2
+            while (BUILDS / slug).exists(): slug = f"{base}-{n}"; n += 1
+            emit({"type": "status", "text": "Designing…", "slug": slug})
+            chars = 0
+            def collect(ev):
+                nonlocal chars
+                if ev["type"] == "delta":
+                    buf.append(ev["text"]); chars += len(ev["text"]); emit({"type": "progress", "chars": chars})
+                elif ev["type"] == "thinking": emit({"type": "thinking", "n": ev["n"]})
+            msgs = [{"role": "system", "content": BUILD_SYS}, {"role": "user", "content": prompt}]
+            stream_openai(p, model, msgs, collect)
+            html = extract_html("".join(buf))
+            if not html: raise RuntimeError("the model did not return an HTML document — try again or pick another model")
+            (BUILDS / slug).mkdir(parents=True)
+            (BUILDS / slug / "index.html").write_text(html)
+            tm = re.search(r"<title>(.*?)</title>", html, re.I | re.S)
+            meta = {"prompt": prompt, "model": f"{pid}::{model}", "ts": time.time(), "title": (tm.group(1).strip() if tm else slug)[:80]}
+            save_json(BUILDS / slug / "agentos.json", meta)
+            emit({"type": "done", "slug": slug, "url": f"/builds/{slug}/index.html", "title": meta["title"], "ms": int((time.time()-t0)*1000),
+                  "path": str(BUILDS / slug / "index.html")})
+        except (BrokenPipeError, ConnectionResetError):
+            return
+        except Exception as e:
+            try: emit({"type": "error", "error": err_text(e)})
+            except Exception: pass
+
     def chat(self, d):
         pid, model = str(d.get("provider", "")), str(d.get("model", ""))
         msgs = [{"role": m.get("role"), "content": str(m.get("content", ""))[:20000]} for m in (d.get("messages") or [])[-30:]
@@ -719,6 +859,8 @@ class H(BaseHTTPRequestHandler):
         try:
             sysmsgs = [{"role": "system", "content": PERSONA.format(date=time.strftime("%A %B %-d, %Y"))}]
             if d.get("voice"): sysmsgs.append({"role": "system", "content": VOICE_RULES})
+            mc = memory_context()
+            if mc: sysmsgs.append({"role": "system", "content": mc})
             last_user = next((m["content"] for m in reversed(msgs) if m["role"] == "user"), "")
             if d.get("web") and last_user and pid != "hermes":
                 emit({"type": "status", "text": "Searching the web…"})
