@@ -28,6 +28,8 @@ Runs on `127.0.0.1:9120` only. Python standard library plus PyYAML on the server
 
 ## Run
 
+Open **AgentOS** from `/Applications`, Launchpad or Spotlight. It starts the server and opens the app window. Rebuild the launcher with `bin/build-app.sh`.
+
 ```bash
 agentos            # start the server and open the app window (Chrome --app)
 agentos --stop     # stop it
