@@ -383,7 +383,7 @@ $("chatmodel").onclick = e=>openPicker(e.currentTarget);
    ===================================================================================== */
 const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
 const V = { rec:null, listening:false, speaking:false, busy:false, abort:null, history:[], empties:0,
-  hands:LS.get("hands", false), speak:LS.get("speak", true), mode:LS.get("vmode", "direct"), stream:null, meterRaf:0 };
+  hands:LS.get("hands", false), speak:LS.get("speak", true), mode:(m=>m==="direct"?"auto":m)(LS.get("vmode", "auto")), stream:null, meterRaf:0 };
 let miniTimer = 0;
 function miniShow(text){
   const el = $("mini"); if(text != null) $("mtext").textContent = text.length > 400 ? "…" + text.slice(-400) : text;
@@ -596,25 +596,34 @@ async function handleUtterance(text){
   HIST.add("voice", text);
   $("vheard").textContent = `“${text}”`; $("vsrc").innerHTML = ""; vGhost.clear();
   for(const [rx, fn] of INTENTS){ const m = text.match(rx); if(m){ await fn(m, text); return; } }
-  return converse(text, {web:V.mode === "web", agent:V.mode === "agent"});
+  return converse(text, {web:V.mode === "web" ? true : "auto", agent:V.mode === "agent"});
 }
-async function converse(text, {web=false, agent=false, prompt=null} = {}){
+const NO_LIVE = /let me search that|(?:don'?t|do not) have (?:any )?(?:live|real-?time|current|internet|web|up-to-date)|(?:can'?t|cannot|unable to) (?:browse|search|access (?:the )?(?:internet|web))|no (?:live|real-?time) (?:access|data|news)|check (?:the )?official (?:channels|site)/i;
+async function converse(text, {web=false, agent=false, prompt=null, retried=false} = {}){
   if(V.abort) V.abort.abort();
   stopSpeaking();
   V.history.push({role:"user", content:prompt || text});
   V.history = V.history.slice(-20); const idx = V.history.length - 1;
   const model = agent ? {provider:"hermes", id:"agent"} : active;
-  V.busy = true; TTS.neural = true; setVState("think", agent ? "HERMES AGENT WORKING" : web ? "SEARCHING THE WEB" : "THINKING");
+  V.busy = true; TTS.neural = true; setVState("think", agent ? "HERMES AGENT WORKING" : web === true ? "SEARCHING THE WEB" : "THINKING");
+  let searched = false;
   $("vreply").textContent = ""; let out = "";
   const ac = V.abort = new AbortController();
   try{
     await streamChat({provider:model.provider, model:model.id, messages:V.history, web, voice:true}, ev=>{
       if(ev.type === "delta"){ out += ev.text; $("vreply").textContent = out; $("vreply").scrollTop = 1e9; if(page !== "home") miniShow(out); if(V.speak) feedSpeech(ev.text); if(!V.speaking) setVState("think", "RESPONDING"); }
       else if(ev.type === "status" && !out) $("vlabel").textContent = ev.text.replace("…","").toUpperCase();
-      else if(ev.type === "sources") $("vsrc").innerHTML = ev.items.slice(0, 5).map(s=>`<a data-url="${esc(s.url)}" href="${esc(s.url)}">${esc(s.title || host(s.url))}</a>`).join("");
+      else if(ev.type === "sources"){ searched = true; $("vsrc").innerHTML = ev.items.slice(0, 5).map(s=>`<a data-url="${esc(s.url)}" href="${esc(s.url)}">${esc(s.title || host(s.url))}</a>`).join(""); }
+      else if(ev.type === "route" && ev.search){ setVState("think", "SEARCHING THE WEB"); }
       else if(ev.type === "error") throw new Error(ev.error);
     }, ac.signal);
     if(prompt && V.history[idx]) V.history[idx].content = text;
+    if(!searched && !agent && !retried && NO_LIVE.test(out)){
+      // the model wanted live info it didn't get: search and ask again
+      V.history.splice(idx, 1); stopSpeaking(); V.busy = false; if(V.abort === ac) V.abort = null;
+      $("vreply").textContent = "";
+      return converse(text, {web:true, prompt, retried:true});
+    }
     V.history.push({role:"assistant", content:out});
     vGhost.predict();
   }catch(e){
@@ -746,12 +755,13 @@ async function sendChat(){
   const ac = C.abort = new AbortController(); $("csend").innerHTML = icon("stop") + "Stop";
   const speak = $("cspeak").checked; let thinking = 0;
   try{
-    await streamChat({provider:active.provider, model:active.id, web:$("cweb").checked, voice:false,
+    await streamChat({provider:active.provider, model:active.id, web:$("cweb").checked ? true : "auto", voice:false,
       messages:s.msgs.filter(m=>!m.pending && !m.error).map(m=>({role:m.role, content:m.content}))}, ev=>{
       if(ev.type === "delta"){ a.content += ev.text; a.status = ""; if(speak) feedSpeech(ev.text); }
       else if(ev.type === "thinking"){ thinking = ev.n; a.status = `Reasoning… ${thinking.toLocaleString()} chars`; }
       else if(ev.type === "status") a.status = ev.text;
       else if(ev.type === "sources") a.sources = ev.items;
+      else if(ev.type === "route" && ev.search) a.status = `Searching the web for “${ev.query}”…`;
       else if(ev.type === "done") a.ms = ev.ms;
       else if(ev.type === "error") throw new Error(ev.error);
       updateLast();

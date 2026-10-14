@@ -52,6 +52,10 @@ PERSONA = ("You are AgentOS, Jacob's personal AI operating system — warm, frie
            "maintains skills on a schedule — marking stale ones and archiving unused ones, never deleting — and can consolidate overlapping skills; "
            "crew tasks are dispatched through a Kanban board where the orchestrator decomposes work; the librarian only runs when Jacob names it; "
            "shared memory lives in his Obsidian vault. If asked how to do something in Hermes you are not sure about, say so and suggest checking the Hermes docs. "
+           "You have LIVE WEB SEARCH: AgentOS automatically searches the web whenever a question needs current information and gives you the results "
+           "below as 'Live web results'. Use them confidently and say how recent the information is. Never tell Jacob you lack internet or live access, "
+           "and never send him to go check websites himself. If no web results are attached and you genuinely need current facts, say exactly "
+           "'Let me search that.' and nothing else — AgentOS will run the search and ask you again. Jacob is at his Mac using AgentOS right now. "
            "Today is {date}.")
 VOICE_RULES = ("This reply will be spoken aloud by a natural female voice. Talk like a warm, friendly person chatting with a friend: "
                "contractions, short sentences, a little warmth or light humor where it fits, and react naturally (\"Sure!\", \"Good question.\", \"Hmm, let me think.\"). "
@@ -413,6 +417,33 @@ def suggest(text, kind, context):
         except Exception as e:
             last = err_text(e)
     return {"suggestion": "", "error": last or "no suggestion model available"}
+
+# ---------------------------------------------------------------- auto web search: decide per question whether live info is needed
+LIVE_HINT = re.compile(r"\b(news|latest|newest|recent(ly)?|today|tonight|yesterday|tomorrow|this (week|month|year)|right now|currently|current|"
+                       r"update[sd]?|patch|release(d| date)?|launch(ed|es)?|announce(d|ment)?|rumou?rs?|leaks?|trailer|price|cost|stock|weather|"
+                       r"score|who won|standings|schedule|20[2-3]\d|is .{1,40} (out|coming|delayed|cancell?ed)|still (alive|happening|available))\b", re.I)
+def search_plan(msgs):
+    """-> (search?, query). Fast classifier (Cerebras gpt-oss ~0.3s) with a keyword fallback."""
+    last = next((m["content"] for m in reversed(msgs) if m["role"] == "user"), "").strip()
+    if not last: return False, ""
+    ctx = "\n".join(f"{m['role']}: {m['content'][:300]}" for m in msgs if m["role"] in ("user", "assistant"))[-1500:]
+    prompt = (f"Today is {time.strftime('%B %-d, %Y')}. Conversation:\n{ctx}\n\nDoes answering the LAST user message well require a live web search? "
+              "Say yes for anything time-sensitive or that may have changed recently: news, games/products/releases, prices, sports, weather, "
+              "people's current roles, companies, events, software versions, or niche facts. Say no for chit-chat, opinions, math, coding help, "
+              "general knowledge, or commands about this app. Reply with JSON only: {\"search\": true|false, \"query\": \"short web search query\"}")
+    for pid, model, extra in SUGGEST_MODELS:
+        p = provider(pid)
+        if not p or not provider_key(p): continue
+        try:
+            with urllib.request.urlopen(chat_request(p, model, [{"role": "user", "content": prompt}], stream=False, max_tokens=600, extra=extra), timeout=6) as r:
+                out = ((json.load(r).get("choices") or [{}])[0].get("message") or {}).get("content") or ""
+            m = re.search(r"\{.*\}", out, re.S)
+            if m:
+                j = json.loads(m.group(0))
+                return bool(j.get("search")), (str(j.get("query") or last)[:300])
+        except Exception:
+            continue
+    return bool(LIVE_HINT.search(last)), last[:300]
 
 # ---------------------------------------------------------------- web: search + reader
 def web_search(q, n=8):
@@ -918,14 +949,23 @@ class H(BaseHTTPRequestHandler):
             mc = memory_context()
             if mc: sysmsgs.append({"role": "system", "content": mc})
             last_user = next((m["content"] for m in reversed(msgs) if m["role"] == "user"), "")
-            if d.get("web") and last_user and pid != "hermes":
+            web = d.get("web")
+            query = last_user[:400]
+            if web == "auto" and last_user and pid != "hermes":
+                need, q2 = search_plan(msgs)
+                web, query = need, (q2 or query)
+                emit({"type": "route", "search": bool(need), "query": q2})
+            if web and last_user and pid != "hermes":
                 emit({"type": "status", "text": "Searching the web…"})
-                res = web_search(last_user[:400], 6)
+                res = web_search(query, 6)
                 if isinstance(res, list) and res:
                     emit({"type": "sources", "items": [{"title": r["title"], "url": r["url"]} for r in res]})
-                    ctx = "\n\n".join(f"[{i+1}] {r['title']} ({r['url']})\n{r['text'][:1100]}" for i, r in enumerate(res))
-                    sysmsgs.append({"role": "system", "content": "Live web results for the latest question. Ground your answer in them"
+                    ctx = "\n\n".join(f"[{i+1}] {r['title']} ({r['url']}){' — published ' + r['published'][:10] if r.get('published') else ''}\n{r['text'][:1100]}" for i, r in enumerate(res))
+                    sysmsgs.append({"role": "system", "content": f"Live web results (searched just now for: {query}). Ground your answer in them"
                                     + (" (no citations needed when speaking)." if d.get("voice") else " and cite like [1].") + "\n\n" + ctx})
+                else:
+                    why = res.get("error") if isinstance(res, dict) else "no results"
+                    sysmsgs.append({"role": "system", "content": f"A live web search was attempted for '{query}' but failed ({why}). Tell Jacob the search didn't go through this time and answer from what you know, flagging that it may be out of date."})
             if d.get("context"):
                 sysmsgs.append({"role": "system", "content": "Page the user is looking at:\n" + str(d["context"])[:14000]})
             full = sysmsgs + [m for m in msgs if m["role"] != "system"]

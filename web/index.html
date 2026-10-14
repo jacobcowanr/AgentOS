@@ -59,7 +59,7 @@
         <div class="vbar glass">
           <button id="mic" title="Talk (Space)"><i data-i="mic"></i></button>
           <input id="vtext" placeholder="Speak, or type a command…" autocomplete="off" spellcheck="false">
-          <div class="modes" id="vmodes"><button data-m="direct">CHAT</button><button data-m="web">WEB</button><button data-m="agent">AGENT</button></div>
+          <div class="modes" id="vmodes"><button data-m="auto" title="Searches the web automatically when a question needs live info">AUTO</button><button data-m="web">WEB</button><button data-m="agent">AGENT</button></div>
           <button class="icon-btn" id="vbrief" title="Daily briefing"><i data-i="sun"></i></button>
           <button class="icon-btn" id="vwake" title="Wake word: “Hey AgentOS”"><i data-i="ear"></i></button>
           <button class="icon-btn" id="vhands" title="Hands-free conversation"><i data-i="loop"></i></button>
@@ -90,7 +90,7 @@
             <button class="btn pri sm" id="csend"><i data-i="send"></i>Send</button>
           </div>
           <div class="opts">
-            <label class="toggle"><input type="checkbox" id="cweb"><i></i>Web search</label>
+            <label class="toggle" title="Off = automatic (searches when the question needs live info). On = always search."><input type="checkbox" id="cweb"><i></i>Always search the web</label>
             <label class="toggle"><input type="checkbox" id="cspeak"><i></i>Speak replies</label>
             <span style="margin-left:auto" class="mono" id="cstat"></span>
           </div>

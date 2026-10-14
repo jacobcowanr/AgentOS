@@ -8,7 +8,7 @@ Runs on `127.0.0.1:9120` only. Python standard library plus PyYAML on the server
 
 | Page | What it does |
 |---|---|
-| **Home** | Voice orb. Talk with Space or the mic. Hands-free mode keeps the conversation going. Modes: Chat, Web (search-grounded) and Agent (full Hermes tool loop). Understands commands such as "open the oracle", "search the web for …", "tell the crew to …", "switch model to …" and "what's new in AI?" |
+| **Home** | Voice orb. Talk with Space or the mic. Hands-free mode keeps the conversation going. Modes: **Auto** (default: a fast model decides per question whether to search the web first; if a reply still claims it has no live access, AgentOS searches and asks again), Web (always search) and Agent (full Hermes tool loop). Understands commands such as "open the oracle", "search the web for …", "tell the crew to …", "switch model to …" and "what's new in AI?" |
 | **Chat** | Multi-session chat with any free model, optional web grounding and spoken replies |
 | **Browser** | Exa web search plus a server-side reader view, with a page assistant that summarizes and answers questions about the open page |
 | **Hermes Oracle** | Live AI news from 9 feeds, Hugging Face trending and new free models. *Consult the Oracle* writes a briefing; *Hear the brief* reads it aloud |
