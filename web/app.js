@@ -1147,6 +1147,7 @@ const BD = {list:[], sel:null, busy:false};
 async function loadBuilds(){
   try{ const d = await api.get("/api/builds"); BD.list = d.builds; $("bddir").textContent = d.dir.replace(/^\/Users\/[^/]+/, "~"); }catch{}
   renderBuilds();
+  if(!BD.sel && BD.list.length && !BD.busy) showBuild(BD.list[0].slug);   // open the newest build instead of an empty preview
 }
 function renderBuilds(){
   $("bdlist").innerHTML = BD.list.map(b=>`<div class="bd ${BD.sel===b.slug?"on":""}" data-s="${esc(b.slug)}"><b>${esc(b.title)}</b><small title="${esc(b.prompt)}">${esc(b.prompt)}</small><small>${ago(b.ts)} · ${esc((b.model||"").split("::").pop())}</small></div>`).join("")

@@ -1,52 +1,112 @@
 # AgentOS
 
-A local, voice-first operating system for a [Hermes Agent](https://hermes-agent.nousresearch.com) crew. It puts Team Hermes and the AI Factory under one roof, with a JARVIS-style voice home screen, a live free-model catalog, a web browser and the Hermes Oracle AI-news feed.
+**A local, voice-first operating system for a [Hermes Agent](https://hermes-agent.nousresearch.com) crew.** It puts Team Hermes and the AI Factory under one roof, behind a JARVIS-style voice home screen. Around that sit a live catalog of free models, a web browser, the Hermes Oracle AI-news feed, voice-built apps, long-term memory, NotebookLM portfolio grounding and drag-and-drop file understanding.
 
-Runs on `127.0.0.1:9120` only. Python standard library plus PyYAML on the server. Vanilla JS and three.js r128 (vendored) in the browser.
+Runs only on `127.0.0.1:9120`. Python standard library + PyYAML on the server, vanilla JS + three.js r128 (vendored) in the browser. Free-tier models throughout.
 
-## Pages
+![AgentOS home](docs/images/home.jpg)
 
-| Page | What it does |
+## What it does
+
+| Page | Highlights |
 |---|---|
-| **Home** | Voice orb. Talk with Space or the mic. Hands-free mode keeps the conversation going. Modes: **Auto** (default: a fast model decides per question whether to search the web first; if a reply still claims it has no live access, AgentOS searches and asks again), Web (always search) and Agent (full Hermes tool loop). Understands commands such as "open the oracle", "search the web for …", "tell the crew to …", "switch model to …" and "what's new in AI?" |
-| **Chat** | Multi-session chat with any free model, optional web grounding and spoken replies |
-| **Browser** | Exa web search plus a server-side reader view, with a page assistant that summarizes and answers questions about the open page |
-| **Hermes Oracle** | Live AI news from 9 feeds, Hugging Face trending and new free models. *Consult the Oracle* writes a briefing; *Hear the brief* reads it aloud |
-| **Models** | Live catalog from Nous Portal, OpenRouter, Hugging Face, Cerebras, Gemini, Mistral, NVIDIA and Groq, plus any OpenAI-compatible provider you add. Free-tier filter, one-click test, NEW flags and auto-refresh every 30 minutes |
-| **Builds** | "Build me a snake game." A model writes one self-contained HTML app, saves it to `~/Projects/AgentOS-Builds/` and runs it in a sandbox. Built apps are served with a CSP `sandbox` header, so they can never call the AgentOS API |
-| **Memory** | "Remember that…", "What do you remember about…?", "Forget…". Notes are injected into every model as context. Stored in `data/memory.json` (mode 600, gitignored) |
-| **Team Hermes** | 3D crew constellation, Kanban board, and catalog-routed dispatch (`bin/agentos-dispatch`) |
-| **AI Factory** | Curator state, skill matrix galaxy and forge ledger |
+| **Home** | Voice orb that reacts to your voice and hers. Talk with **Space** or the mic, or say **"Hey AgentOS"** (wake word, off by default). Hands-free mode keeps the conversation going. Natural female neural voice (Ava by default). Modes: **Auto** (searches the web only when needed), **Web**, **Agent** (full Hermes tool loop). |
+| **Chat** | Multi-session chat with any free model, auto web grounding, file attachments, spoken replies. |
+| **Browser** | Exa web search plus a clean server-side reader view, with a page assistant that summarizes or answers questions about the open page. |
+| **Hermes Oracle** | Live AI news from 9 feeds, Hugging Face trending and newly free models. *Consult the Oracle* writes a briefing; *Hear the brief* reads it aloud; *Draft this* turns a story into a post. |
+| **Models** | Live free-tier catalog from Nous Portal, OpenRouter, Hugging Face, Cerebras, Gemini, Mistral, NVIDIA and Groq, plus any OpenAI-compatible provider you add. One-click test, NEW flags, auto-refresh. |
+| **Builds** | "Build me a snake game." A model writes one self-contained app, saves it to `~/Projects/AgentOS-Builds/` and runs it in a sandbox. |
+| **Memory** | "Remember that…", "What do you remember about…?", "Forget…", plus your **NotebookLM "Jacob's Career Portfolio"** as a knowledge source. |
+| **Team Hermes** | 3D crew constellation, Kanban board and catalog-routed dispatch to the six Hermes bots. |
+| **AI Factory** | Curator state, skill-matrix galaxy and forge ledger: the crew's self-improvement loop. |
 
-**Files:** drag and drop anywhere in the window, paste a screenshot with ⌘V, or use 📎 on Home or Chat.
-- **Images and screenshots** go to a vision model automatically when the selected model can't see. Default is Cerebras Qwen 3.8 (about 0.5s); Gemini Flash-Lite and Llama 3.2 Vision are backups.
-- **PDFs** have their text extracted. Scanned PDFs are rendered to page images for the vision model.
-- **Text and code files** are read as-is.
-- Files stay in the conversation for follow-up questions. Uploads live in `data/uploads/` (gitignored) and are pruned after 30 days.
-- If the chosen model is busy or down before it starts answering, AgentOS falls back to another free model.
-
-**Portfolio (NotebookLM):** questions about you use a synced profile of your "Jacob's Career Portfolio" notebook. Say "ask my portfolio …" for a live lookup. AgentOS talks to `notebooklm-mcp` directly and never runs its auth setup.
-
-**Apollo-style voice:**
-- **Wake word**, off by default: say "Hey AgentOS" (or "Hey Jarvis") and then your request.
-- **Daily or weekly briefing:** say "brief me", "good morning" or press ☀. It covers the crew board, the AI Factory, top headlines and new free models.
-- **Real-browser control:** "open github in Chrome", "play lofi on YouTube".
+**Across every page:**
+- **Ghost text:** gray inline suggestions in every input. Tab accepts the whole suggestion, → accepts one word.
+- **Files:** drag and drop anywhere, paste with ⌘V, or use 📎.
 - **Floating reactor:** a corner orb you can talk to from any page.
+- **Never stuck on a busy model:** if the chosen model is down, another free model takes over.
 
-**Ghost text:** inline suggestions in every input. Tab accepts the whole suggestion; → accepts one word. Suggestions come from history and commands first, then a fast free model (Cerebras gpt-oss-120b, about 0.3s). After each reply it predicts your next message.
+| | | |
+|---|---|---|
+| ![Oracle](docs/images/oracle.jpg) | ![Models](docs/images/models.jpg) | ![Team Hermes](docs/images/team.jpg) |
+| ![Builds](docs/images/builds.jpg) | ![Memory](docs/images/memory.jpg) | ![AI Factory](docs/images/factory.jpg) |
 
-## Run
+## How it fits together
 
-Open **AgentOS** from `/Applications`, Launchpad or Spotlight. It starts the server and opens the app window. Rebuild the launcher with `bin/build-app.sh`.
+```mermaid
+flowchart LR
+    subgraph Mac["Jacob's Mac (everything local)"]
+        UI["AgentOS window<br/>Chrome --app<br/>index.html · app.js · hud.js"]
+        SRV["web/server.py<br/>127.0.0.1:9120"]
+        VENV[".venv<br/>edge-tts · pypdf · pypdfium2"]
+        NLM["notebooklm-mcp<br/>headless Chrome"]
+        HERMES["Hermes Agent CLI<br/>kanban.db · curator · skills"]
+        DATA[("data/<br/>memory · digest · uploads<br/>providers · catalog state")]
+        BUILDS[("~/Projects/AgentOS-Builds")]
+    end
+    subgraph Cloud["Free-tier services"]
+        LLM["Model providers<br/>Nous · OpenRouter · Cerebras · Gemini<br/>Mistral · NVIDIA · HF · Groq"]
+        EXA["Exa web search"]
+        FEEDS["AI news RSS · HF API"]
+        TTS["Microsoft neural TTS"]
+        NB["NotebookLM<br/>Jacob's Career Portfolio"]
+        STT["Chrome speech recognition"]
+    end
+    UI -- "fetch / SSE" --> SRV
+    UI -. "mic audio" .-> STT
+    SRV --> LLM
+    SRV --> EXA
+    SRV --> FEEDS
+    SRV -- "tts_stream.py / pdf_extract.py" --> VENV
+    VENV --> TTS
+    SRV -- "MCP stdio" --> NLM
+    NLM --> NB
+    SRV -- "hermes -z · kanban · curator" --> HERMES
+    SRV --> DATA
+    SRV --> BUILDS
+```
+
+## Quick start
+
+Open **AgentOS** from `/Applications`, Launchpad or Spotlight. It starts the server if needed and opens the app window.
 
 ```bash
-agentos            # start the server and open the app window (Chrome --app)
-agentos --stop     # stop it
+agentos            # start the server and open the app window
+agentos --stop     # stop the server (and its headless NotebookLM browser)
+agentos --classic  # open the stock Hermes dashboard on :9119
 agentos "task"     # dispatch a task to the crew from the terminal
 ```
 
-Keys are read from `~/.hermes/.env`: `NOUS_API_KEY`, `OPENROUTER_API_KEY`, `HF_TOKEN`, `CEREBRAS_API_KEY`, `GOOGLE_API_KEY`, `MISTRAL_API_KEY`, `NVIDIA_API_KEY`, `GROQ_API_KEY` and `EXA_AI_API_KEY`. Keys pasted into the UI are saved to `data/providers.json` with mode 600. That file is gitignored and never sent to the browser.
+Keys come from `~/.hermes/.env` (`NOUS_API_KEY`, `OPENROUTER_API_KEY`, `CEREBRAS_API_KEY`, `GOOGLE_API_KEY`, `MISTRAL_API_KEY`, `NVIDIA_API_KEY`, `HF_TOKEN`, `GROQ_API_KEY`, `EXA_AI_API_KEY`). First-time setup, rebuilding the app and troubleshooting are covered in [docs/OPERATIONS.md](docs/OPERATIONS.md).
 
-**Voice output** uses natural Microsoft neural voices through [edge-tts](https://github.com/rany2/edge-tts). It's free and needs no key. It runs in AgentOS's own venv, set up once with `uv venv .venv && VIRTUAL_ENV=.venv uv pip install edge-tts`. Pick a voice in the sidebar (♪): Ava (default), Emma, Jenny, Aria, Michelle, Sonia, Libby, Natasha or Emily. If the service is unreachable, AgentOS falls back to a female macOS system voice. Text you send to be spoken goes to Microsoft's speech service.
+## Documentation
 
-Voice input uses Chrome's Web Speech API, so speech recognition needs Chrome and an internet connection. Replies are spoken with the macOS system voices.
+| Guide | Covers |
+|---|---|
+| [Architecture](docs/ARCHITECTURE.md) | Components, request lifecycle, API reference, background jobs, data files |
+| [Voice](docs/VOICE.md) | Listening, wake word, patience, intents, neural voice pipeline, orb states |
+| [Models & routing](docs/MODELS.md) | Live catalog, auto web search, vision routing, fallback chains, ghost text |
+| [Knowledge](docs/KNOWLEDGE.md) | Memory, NotebookLM portfolio, file attachments, Oracle news, web reader |
+| [Crew](docs/CREW.md) | Team Hermes dispatch, Kanban shapes, AI Factory, Builds |
+| [Security & privacy](docs/SECURITY.md) | Trust boundaries, what leaves the machine, guards, key storage |
+| [Operations](docs/OPERATIONS.md) | Install, run, logs, rebuild, troubleshooting |
+| [Changelog](CHANGELOG.md) | What changed and when |
+
+## Repository layout
+
+```
+AgentOS.applescript     launcher compiled into /Applications/AgentOS.app
+assets/                 app icon (svg + icns)
+bin/agentos             start/stop/open; passes tasks to agentos-dispatch
+bin/agentos-dispatch    routes a task through catalog.yaml into a Hermes Kanban graph
+bin/build-app.sh        (re)builds /Applications/AgentOS.app
+catalog.yaml            the six crew bots, roles and routing triggers
+route.py                deterministic task → bots/shape router
+web/server.py           HTTP + SSE server, all integrations
+web/index.html · app.js · app.css   the UI
+web/hud.js              three.js scene (voice orb, crew constellation, skill galaxy)
+web/tts_stream.py       neural speech streamer (runs in .venv)
+web/pdf_extract.py      PDF text + page rendering (runs in .venv)
+docs/                   guides + screenshots
+data/                   local state — gitignored (keys, memory, uploads)
+```
