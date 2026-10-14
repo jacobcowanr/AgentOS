@@ -195,7 +195,7 @@ function go(p){
   if(p === "home") setTimeout(()=>{ if(!V.listening) $("vtext").focus(); }, 60);
   if(p === "browser" && !B.hist.length) B.renderHome();
   if(p === "builds") loadBuilds();
-  if(p === "memory") loadMemory();
+  if(p === "memory"){ loadMemory(); loadPortfolio(); }
   $("mini").hidden = p === "home";
 }
 $$(".nav").forEach(b=>b.onclick = ()=>go(b.dataset.page));
@@ -382,6 +382,7 @@ $("chatmodel").onclick = e=>openPicker(e.currentTarget);
    VOICE — the home screen. Web Speech API in, speechSynthesis out, sentence streaming.
    ===================================================================================== */
 const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+const PATIENCE_MS = ()=>({quick:1500, normal:2500, patient:4000})[LS.get("patience", "normal")] || 2500;
 const V = { rec:null, listening:false, speaking:false, busy:false, abort:null, history:[], empties:0,
   hands:LS.get("hands", false), speak:LS.get("speak", true), mode:(m=>m==="direct"?"auto":m)(LS.get("vmode", "auto")), stream:null, meterRaf:0 };
 let miniTimer = 0;
@@ -409,7 +410,7 @@ async function meterOn(){
     const ctx = V.actx || (V.actx = new AudioContext()); if(ctx.state === "suspended") await ctx.resume();
     const an = ctx.createAnalyser(); an.fftSize = 512; ctx.createMediaStreamSource(V.stream).connect(an);
     const buf = new Uint8Array(an.fftSize);
-    const loop = ()=>{ if(!V.listening) return; an.getByteTimeDomainData(buf); let s = 0; for(const v of buf){ const x = (v-128)/128; s += x*x; } HUD.setLevel(Math.min(1, Math.sqrt(s/buf.length)*5)); V.meterRaf = requestAnimationFrame(loop); };
+    const loop = ()=>{ if(!V.listening) return; an.getByteTimeDomainData(buf); let s = 0; for(const v of buf){ const x = (v-128)/128; s += x*x; } const lvl = Math.min(1, Math.sqrt(s/buf.length)*5); HUD.setLevel(lvl); if(lvl > .14 && V.armSilence) V.armSilence(); V.meterRaf = requestAnimationFrame(loop); };
     loop();
   }catch{ /* the level meter is cosmetic */ }
 }
@@ -420,12 +421,17 @@ function listen(){
   if(V.listening){ V.rec && V.rec.stop(); return; }
   if(V.wakeRec){ wakeStop(); setTimeout(listen, 180); return; }
   stopSpeaking(); if(V.abort) V.abort.abort();
-  const rec = new SR(); rec.lang = "en-US"; rec.interimResults = true; rec.continuous = false; rec.maxAlternatives = 1;
-  let final = "";
+  const rec = new SR(); rec.lang = "en-US"; rec.interimResults = true; rec.continuous = true; rec.maxAlternatives = 1;
+  let final = "", interimNow = "", silenceT = 0;
+  // Chrome ends a turn after ~1s of silence; instead keep listening and only finish after Jacob's chosen pause
+  const armSilence = ()=>{ clearTimeout(silenceT); silenceT = setTimeout(()=>{ try{ rec.stop(); }catch{} }, PATIENCE_MS()); };
+  V.armSilence = ()=>{ if(final || interimNow) armSilence(); };   // the mic meter re-arms while sound is still coming in
   rec.onstart = ()=>{ V.listening = true; setVState("listen", "LISTENING"); $("vheard").textContent = ""; meterOn(); };
   rec.onresult = e=>{
-    let interim = ""; for(let i = e.resultIndex; i < e.results.length; i++){ const r = e.results[i]; if(r.isFinal) final += r[0].transcript; else interim += r[0].transcript; }
-    const t = (final + interim).trim(); $("vheard").textContent = t ? `“${t}”` : "";
+    let interim = ""; for(let i = e.resultIndex; i < e.results.length; i++){ const r = e.results[i]; if(r.isFinal) final += r[0].transcript + " "; else interim += r[0].transcript; }
+    interimNow = interim;
+    const t = (final + interim).replace(/\s+/g, " ").trim(); $("vheard").textContent = t ? `“${t}”` : "";
+    armSilence();
   };
   rec.onerror = e=>{
     if(e.error === "not-allowed" || e.error === "service-not-allowed"){ V.hands = false; LS.set("hands", false); renderVoiceToggles(); toast("Microphone blocked", "Allow microphone access for 127.0.0.1 (click the icon in the address bar).", "bad"); }
@@ -433,8 +439,9 @@ function listen(){
     else if(e.error !== "no-speech" && e.error !== "aborted") toast("Voice error", e.error, "bad");
   };
   rec.onend = ()=>{
+    clearTimeout(silenceT); V.armSilence = null;
     V.listening = false; V.rec = null; meterOff();
-    const t = final.trim();
+    const t = (final + " " + interimNow).replace(/\s+/g, " ").trim();
     if(t){ V.empties = 0; handleUtterance(t); return; }
     setVState("idle", V.hands ? "HANDS-FREE · SAY SOMETHING" : "STANDING BY");
     if(!V.hands) wakeStart();
@@ -577,6 +584,8 @@ const INTENTS = [
     m=>{ const p = NAVMAP[m[1].toLowerCase().replace(/^hermes /,"")]; go(p); say(`Opening ${TITLE[p]}.`); }],
   [/^(?:open|go to|visit|browse to|pull up)\s+((?:https?:\/\/)?[a-z0-9-]+(?:\s?(?:dot|\.)\s?[a-z0-9-]+)+(?:\/\S*)?)[.!]?$/i,
     m=>{ const url = m[1].replace(/\s?dot\s?/gi, ".").replace(/\s/g, ""); go("browser"); B.nav(url); say(`Opening ${url}.`); }],
+  [/^(?:ask|check|search|look in|look at) (?:my |the )?(?:portfolio|notebook ?lm|notebook)(?: (?:for|about|whether|if|what|how|when))?[,:]?\s+(.+)|^according to my (?:portfolio|notebook),?\s+(.+)/i,
+    m=>converse(m[0], {portfolio:"deep", web:false})],
   [/^(?:search(?: the web| online| the internet)?(?: for)?|google|look up|browse for|find me)\s+(.+)/i, m=>{ B.search(m[1].replace(/[.?!]$/,""), false); return converse(m[0], {web:true}); }],
   [/^(?:remember|note|don'?t forget|make a note)(?: that| this)?[:,]?\s+(.{3,})/i, m=>memoryAdd(m[1].replace(/[.!]$/,""), true)],
   [/^what (?:do you|else do you) (?:remember|know about me|have in memory)(?: about (.+?))?\??$/i, m=>memoryRecall(m[1])],
@@ -599,7 +608,7 @@ async function handleUtterance(text){
   return converse(text, {web:V.mode === "web" ? true : "auto", agent:V.mode === "agent"});
 }
 const NO_LIVE = /let me search that|(?:don'?t|do not) have (?:any )?(?:live|real-?time|current|internet|web|up-to-date)|(?:can'?t|cannot|unable to) (?:browse|search|access (?:the )?(?:internet|web))|no (?:live|real-?time) (?:access|data|news)|check (?:the )?official (?:channels|site)/i;
-async function converse(text, {web=false, agent=false, prompt=null, retried=false} = {}){
+async function converse(text, {web=false, agent=false, prompt=null, retried=false, portfolio=null} = {}){
   if(V.abort) V.abort.abort();
   stopSpeaking();
   V.history.push({role:"user", content:prompt || text});
@@ -610,11 +619,16 @@ async function converse(text, {web=false, agent=false, prompt=null, retried=fals
   $("vreply").textContent = ""; let out = "";
   const ac = V.abort = new AbortController();
   try{
-    await streamChat({provider:model.provider, model:model.id, messages:V.history, web, voice:true}, ev=>{
+    let filler = false;
+    await streamChat({provider:model.provider, model:model.id, messages:V.history, web, voice:true, portfolio}, ev=>{
       if(ev.type === "delta"){ out += ev.text; $("vreply").textContent = out; $("vreply").scrollTop = 1e9; if(page !== "home") miniShow(out); if(V.speak) feedSpeech(ev.text); if(!V.speaking) setVState("think", "RESPONDING"); }
       else if(ev.type === "status" && !out) $("vlabel").textContent = ev.text.replace("…","").toUpperCase();
       else if(ev.type === "sources"){ searched = true; $("vsrc").innerHTML = ev.items.slice(0, 5).map(s=>`<a data-url="${esc(s.url)}" href="${esc(s.url)}">${esc(s.title || host(s.url))}</a>`).join(""); }
       else if(ev.type === "route" && ev.search){ setVState("think", "SEARCHING THE WEB"); }
+      else if(ev.type === "status" && /portfolio/i.test(ev.text) && !filler){
+        filler = true; setVState("think", "CHECKING YOUR PORTFOLIO");
+        if(V.speak) speakChunk(["Give me a sec, I'm checking your portfolio.", "One moment, pulling that from your portfolio.", "Let me look that up in your portfolio."][Math.floor(Math.random()*3)]);
+      }
       else if(ev.type === "error") throw new Error(ev.error);
     }, ac.signal);
     if(prompt && V.history[idx]) V.history[idx].content = text;
@@ -661,7 +675,8 @@ const VOICE_CMDS = ["open the oracle", "open the browser", "open the model catal
   "search the web for ", "what's new in AI today?", "consult the oracle", "brief me on AI news", "tell the crew to research ", "tell the crew to write ",
   "tell the crew to build ", "switch model to ", "hands-free on", "hands-free off", "refresh the catalog",
   "give me my daily briefing", "give me my weekly briefing", "build me a ", "build me a snake game", "remember that ", "what do you remember about ",
-  "forget ", "play  on youtube", "open github in chrome", "open youtube in chrome"];
+  "forget ", "play  on youtube", "open github in chrome", "open youtube in chrome",
+  "ask my portfolio ", "ask my portfolio what projects show my SQL skills", "write a cover letter for an IT operations analyst role", "what are my strongest skills?"];
 const vGhost = new Ghost($("vtext"), {kind:"voice", context:()=>V.history.slice(-6),
   local:v=>{
     const lv = v.toLowerCase();
@@ -762,6 +777,7 @@ async function sendChat(){
       else if(ev.type === "status") a.status = ev.text;
       else if(ev.type === "sources") a.sources = ev.items;
       else if(ev.type === "route" && ev.search) a.status = `Searching the web for “${ev.query}”…`;
+      else if(ev.type === "route" && ev.portfolio && ev.portfolio !== "none") a.status = ev.portfolio === "deep" ? "Checking your portfolio in NotebookLM…" : "Using your portfolio…";
       else if(ev.type === "done") a.ms = ev.ms;
       else if(ev.type === "error") throw new Error(ev.error);
       updateLast();
@@ -783,9 +799,10 @@ const cGhost = new Ghost($("cin"), {kind:"chat", context:()=>(session()?.msgs ||
 /* dictation into the composer */
 $("cmic").onclick = ()=>{
   if(!SR){ toast("Dictation needs Chrome", "", "bad"); return; }
-  const rec = new SR(); rec.lang = "en-US"; rec.interimResults = true; const base = $("cin").value ? $("cin").value.trimEnd() + " " : "";
+  const rec = new SR(); rec.lang = "en-US"; rec.interimResults = true; rec.continuous = true; const base = $("cin").value ? $("cin").value.trimEnd() + " " : "";
+  let st = 0; const arm = ()=>{ clearTimeout(st); st = setTimeout(()=>{ try{ rec.stop(); }catch{} }, PATIENCE_MS() + 500); };
   rec.onstart = ()=>$("cmic").classList.add("on");
-  rec.onresult = e=>{ let t = ""; for(const r of e.results) t += r[0].transcript; $("cin").value = base + t; autoSize(); };
+  rec.onresult = e=>{ let t = ""; for(const r of e.results) t += r[0].transcript + (r.isFinal ? " " : ""); $("cin").value = (base + t).replace(/\s+/g, " "); autoSize(); arm(); };
   rec.onend = ()=>{ $("cmic").classList.remove("on"); $("cin").focus(); };
   rec.start();
 };
@@ -1196,6 +1213,7 @@ if(V.wake) setTimeout(wakeStart, 1500);
    VOICE PICKER — natural female neural voices
    ===================================================================================== */
 const SPEEDS = [["-8%","Relaxed"],["+0%","Natural"],["+8%","Brisk"]];
+const PATIENCE = [["quick","Quick · 1.5s",1500],["normal","Normal · 2.5s",2500],["patient","Patient · 4s",4000]];
 async function loadVoices(){
   try{ const d = await api.get("/api/voices"); VOICE.list = d.voices; if(!d.neural) toast("Neural voice not installed", "Using the system voice.", "bad"); }catch{}
   renderVoiceChip();
@@ -1218,15 +1236,58 @@ function openVoicePicker(anchor){
       <div class="mrow ${v.id===VOICE.id?"on":""}" data-v="${esc(v.id)}"><b>${esc(v.name)} <span class="muted" style="font-weight:400">· ${esc(v.accent)}</span></b><small>${esc(v.vibe)}</small>
       <span class="tags"><button class="icon-btn" data-prev="${esc(v.id)}" title="Preview" style="width:30px;height:30px">${icon("speaker")}</button></span></div>`).join("")}</div>
     <div class="h" style="margin:12px 0 8px">Pace</div>
-    <div class="modes" style="display:inline-flex">${SPEEDS.map(([r,l])=>`<button data-r="${r}" class="${VOICE.rate===r?"on":""}">${l.toUpperCase()}</button>`).join("")}</div>`;
+    <div class="modes" style="display:inline-flex">${SPEEDS.map(([r,l])=>`<button data-r="${r}" class="${VOICE.rate===r?"on":""}">${l.toUpperCase()}</button>`).join("")}</div>
+    <div class="h" style="margin:12px 0 8px">Wait for me <b>PAUSE BEFORE SHE REPLIES</b></div>
+    <div class="modes" style="display:inline-flex">${PATIENCE.map(([k,l])=>`<button data-p="${k}" class="${(LS.get("patience","normal"))===k?"on":""}">${l.toUpperCase()}</button>`).join("")}</div>`;
   p.classList.add("on");
   const r = anchor.getBoundingClientRect();
   p.style.left = Math.min(innerWidth - p.offsetWidth - 10, r.left) + "px";
   p.style.top = Math.max(10, r.top - p.offsetHeight - 8) + "px";
   $$("#vpicker [data-prev]").forEach(b=>b.onclick = e=>{ e.stopPropagation(); previewVoice(b.dataset.prev); });
   $$("#vpicker .mrow").forEach(row=>row.onclick = ()=>{ VOICE.id = row.dataset.v; LS.set("nvoice", VOICE.id); TTS.neural = true; renderVoiceChip(); openVoicePicker(anchor); previewVoice(VOICE.id); });
+  $$("#vpicker [data-p]").forEach(b=>b.onclick = e=>{ e.stopPropagation(); LS.set("patience", b.dataset.p); openVoicePicker(anchor); toast("Listening patience", (PATIENCE.find(p=>p[0]===b.dataset.p)||[])[1] + " of silence ends your turn"); });
   $$("#vpicker [data-r]").forEach(b=>b.onclick = e=>{ e.stopPropagation(); VOICE.rate = b.dataset.r; LS.set("nrate", VOICE.rate); renderVoiceChip(); openVoicePicker(anchor); previewVoice(VOICE.id); });
 }
 $("sidevoice").onclick = e=>{ const p = $("vpicker"); if(p.classList.contains("on")){ p.classList.remove("on"); return; } openVoicePicker(e.currentTarget); };
 document.addEventListener("mousedown", e=>{ if($("vpicker").classList.contains("on") && !e.target.closest("#vpicker") && !e.target.closest("#sidevoice")) $("vpicker").classList.remove("on"); });
 loadVoices();
+
+
+/* =====================================================================================
+   PORTFOLIO — NotebookLM "Jacob's Career Portfolio" (digest for instant context + live deep lookups)
+   ===================================================================================== */
+let PF = null;
+async function loadPortfolio(){
+  try{ PF = await api.get("/api/portfolio"); }catch(e){ PF = {error:e.message}; }
+  renderPortfolio();
+  if(PF && PF.busy) setTimeout(loadPortfolio, 5000);
+}
+function renderPortfolio(){
+  const el = $("pfcard"); if(!el || !PF) return;
+  const status = !PF.available ? `<span class="err">notebooklm-mcp not found</span>`
+    : PF.busy ? `<span class="spin"></span> Reading your portfolio in NotebookLM… (about a minute)`
+    : PF.digest ? `Profile synced ${ago(PF.ts)} · auto-refreshes every 3 days` : `Not synced yet`;
+  el.innerHTML = `<div class="h">Knowledge source <b>NOTEBOOKLM</b></div>
+    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+      <i class="led ${PF.digest ? "ok" : PF.busy ? "" : "idle"}"></i>
+      <div style="flex:1;min-width:220px"><b style="color:#fff">Jacob's Career Portfolio</b><div class="muted mono" style="font-size:11px;margin-top:3px">${status}${PF.error ? ` · <span class="err">${esc(PF.error)}</span>` : ""}</div></div>
+      ${PF.url ? `<a class="btn ghost sm" href="${esc(PF.url)}" target="_blank" rel="noopener">${icon("ext")}Open notebook</a>` : ""}
+      <button class="btn ghost sm" id="pfsync" ${PF.busy ? "disabled" : ""}>${icon("reload")}Re-sync</button>
+      ${PF.digest ? `<button class="btn ghost sm" id="pfview">${icon("brain")}View profile</button>` : ""}
+    </div>
+    <p class="muted" style="font-size:12.5px;margin-top:10px">Questions about you (skills, projects, résumé, cover letters, interviews) automatically use this profile. Say “ask my portfolio …” for a live, detailed lookup (~30s).</p>
+    <div class="bdbar" style="padding:0;margin:12px 0 0"><input class="input" id="pfq" placeholder="Ask your portfolio — e.g. which projects show my SQL skills?" autocomplete="off"><button class="btn pri" id="pfask">Ask</button></div>
+    <div class="md" id="pfans" style="margin-top:12px"></div>
+    <pre class="md" id="pfdigest" style="display:none;white-space:pre-wrap;margin-top:12px;font:12.5px/1.6 var(--ui);color:var(--dim);max-height:360px;overflow:auto"></pre>`;
+  $("pfsync").onclick = async ()=>{ await api.post("/api/portfolio/refresh", {}); toast("Re-syncing your portfolio", "NotebookLM takes about a minute."); loadPortfolio(); };
+  if($("pfview")) $("pfview").onclick = ()=>{ const d = $("pfdigest"); d.textContent = PF.digest; d.style.display = d.style.display === "none" ? "block" : "none"; };
+  const ask = async ()=>{
+    const q = $("pfq").value.trim(); if(!q) return;
+    $("pfans").innerHTML = `<div class="status"><span class="spin"></span> Asking NotebookLM… (about 30 seconds)</div>`; $("pfask").disabled = true;
+    try{ const r = await api.post("/api/portfolio/ask", {question:q}); $("pfans").innerHTML = md(r.answer) + `<div class="muted mono" style="font-size:10.5px;margin-top:6px">NotebookLM · ${(r.ms/1000).toFixed(0)}s</div>`; HIST.add("portfolio", q); }
+    catch(e){ $("pfans").innerHTML = `<span class="err">⚠ ${esc(e.message)}</span>`; }
+    $("pfask").disabled = false;
+  };
+  $("pfask").onclick = ask; $("pfq").addEventListener("keydown", e=>{ if(e.key === "Enter") ask(); });
+  new Ghost($("pfq"), {kind:"chat", remote:false, local:()=>[...HIST.get("portfolio"), "which projects show my SQL skills?", "summarize my work experience in 3 bullets", "what makes me a strong IT operations candidate?"]});
+}
