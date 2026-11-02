@@ -34,6 +34,7 @@ Runs only on `127.0.0.1:9120`. Python standard library + PyYAML on the server, v
 ## How it fits together
 
 ```mermaid
+%%{init: {'theme':'base','themeVariables':{'primaryColor':'#efe9ff','primaryTextColor':'#1b1533','primaryBorderColor':'#8b6cef','lineColor':'#6b5bd6','secondaryColor':'#e4eaff','tertiaryColor':'#f7f5ff','edgeLabelBackground':'#ffffff','fontFamily':'ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif','fontSize':'14px','noteBkgColor':'#fff6dc','noteTextColor':'#3a2f00','actorBkg':'#efe9ff','actorBorder':'#8b6cef','actorTextColor':'#1b1533','signalColor':'#4a3fb0','signalTextColor':'#1b1533'}}}%%
 flowchart LR
     subgraph Mac["Jacob's Mac (everything local)"]
         UI["AgentOS window<br/>Chrome --app<br/>index.html · app.js · hud.js"]
@@ -83,13 +84,14 @@ Keys come from `~/.hermes/.env` (`NOUS_API_KEY`, `OPENROUTER_API_KEY`, `CEREBRAS
 
 | Guide | Covers |
 |---|---|
-| [Architecture](docs/ARCHITECTURE.md) | Components, request lifecycle, API reference, background jobs, data files |
-| [Voice](docs/VOICE.md) | Listening, wake word, patience, intents, neural voice pipeline, orb states |
-| [Models & routing](docs/MODELS.md) | Live catalog, auto web search, vision routing, fallback chains, ghost text |
-| [Knowledge](docs/KNOWLEDGE.md) | Memory, NotebookLM portfolio, file attachments, Oracle news, web reader |
-| [Crew](docs/CREW.md) | Team Hermes dispatch, Kanban shapes, AI Factory, Builds |
-| [Security & privacy](docs/SECURITY.md) | Trust boundaries, what leaves the machine, guards, key storage |
-| [Operations](docs/OPERATIONS.md) | Install, run, logs, rebuild, troubleshooting |
+| [**Diagram atlas**](docs/DIAGRAMS.md) | Start here: the whole system on one page and an index of every diagram |
+| [Architecture](docs/ARCHITECTURE.md) | Components, runtime topology, startup, front end, 3D scene, API map, background jobs, storage and caching |
+| [Voice](docs/VOICE.md) | Voice stack, orb states, intents, conversation turn, speech queue, neural voice pipeline |
+| [Models & routing](docs/MODELS.md) | Key resolution, catalog refresh, free or paid, provider management, routing, fallback chains, ghost text |
+| [Knowledge](docs/KNOWLEDGE.md) | Memory, NotebookLM bridge, file attachments, Oracle pipeline, search, reader, briefings |
+| [Crew](docs/CREW.md) | Roster, task routing, dispatch shapes, Kanban board, AI Factory, Builds lifecycle and sandbox |
+| [Security & privacy](docs/SECURITY.md) | Trust boundaries, what leaves the machine, request guards, reader guard, key flow |
+| [Operations](docs/OPERATIONS.md) | Commands, setup, logs, troubleshooting flow, app build |
 | [Changelog](CHANGELOG.md) | What changed and when |
 
 ## Repository layout
@@ -107,6 +109,6 @@ web/index.html · app.js · app.css   the UI
 web/hud.js              three.js scene (voice orb, crew constellation, skill galaxy)
 web/tts_stream.py       neural speech streamer (runs in .venv)
 web/pdf_extract.py      PDF text + page rendering (runs in .venv)
-docs/                   guides + screenshots
+docs/                   guides, diagram atlas, screenshots
 data/                   local state — gitignored (keys, memory, uploads)
 ```
